@@ -1,0 +1,25 @@
+default_install_hook_types: [pre-commit, commit-msg, pre-push]
+
+repos:
+  # Run the existing poe quality tasks before each commit.
+  - repo: local
+    hooks:
+      - id: poe-lint
+        name: poe lint
+        entry: uv run poe lint
+        language: system
+        types: [python]
+        pass_filenames: false
+
+      - id: poe-format
+        name: poe format-check
+        entry: uv run poe format-check
+        language: system
+        types: [python]
+        pass_filenames: false
+
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.4.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]

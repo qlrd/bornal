@@ -1,0 +1,29 @@
+# Python-generated files
+__pycache__/
+*.py[oc]
+build/
+dist/
+wheels/
+*.egg-info
+
+# Presentation build artifacts (keep the .typ source)
+presentation/*.pdf
+
+# Test & coverage artifacts
+.pytest_cache/
+.coverage
+coverage.xml
+htmlcov/
+
+# Virtual environments
+.venv
+
+# AI agent files (krux-ai-pack) — per-contributor, not committed
+/AGENTS.md
+/CLAUDE.md
+/GEMINI.md
+/.agents/
+/.claude/
+/.codex/
+/.cursor/
+/.gemini/
