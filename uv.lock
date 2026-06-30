@@ -6,22 +6,24 @@ requires-python = ">=3.11, <3.13"
 name = "bornal"
 version = "0.1.0"
 source = { editable = "." }
+dependencies = [
+    { name = "pytest" },
+]
 
 [package.dev-dependencies]
 dev = [
     { name = "poethepoet" },
     { name = "pre-commit" },
-    { name = "pytest" },
     { name = "ruff" },
 ]
 
 [package.metadata]
+requires-dist = [{ name = "pytest", specifier = ">=9.1.1" }]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "poethepoet", specifier = ">=0.30" },
     { name = "pre-commit", specifier = ">=3.7" },
-    { name = "pytest", specifier = ">=8.0" },
     { name = "ruff", specifier = ">=0.8" },
 ]
 

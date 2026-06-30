@@ -4,7 +4,9 @@ version = "0.1.0"
 description = "kit for bitcoin related integration test tools"
 readme = "README.md"
 requires-python = ">=3.11,<3.13"
-dependencies = []
+dependencies = [
+    "pytest>=9.1.1",
+]
 
 [project.scripts]
 bornal = "bornal:main"
@@ -26,7 +28,6 @@ packages = ["src/bornal"]
 dev = [
     "poethepoet>=0.30",
     "ruff>=0.8",
-    "pytest>=8.0",
     "pre-commit>=3.7",
 ]
 
