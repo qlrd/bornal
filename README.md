@@ -1,10 +1,10 @@
 # bornal
 
 This work is mainly inspired by [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
-integration test framework, first built by me then improved by [@joaozinhom](https://github.com/joaozinhom)
-based on the imagery proposition of a [bornal]() -- a brazilian heavy-duty,
-water-resistant tatic bag belt (not like we cannot have bugs) -- but the idea
-is to have all on hand to make integration tests as `pytest` plugin.
+integration test framework supported by the following idea: use a imagery
+proposition of a [bornal](https://pt.wikipedia.org/wiki/Bornal) -- a brazilian
+heavy-duty, water-resitant tatic-like bag belt used today by fireman (not like
+we cannot have bugs).
 
 It builds bitcoin daemons from source, runs them on regtest, and hands your
 tests a ready JSON-RPC client — so you write integration tests, not plumbing.
@@ -14,7 +14,7 @@ tests a ready JSON-RPC client — so you write integration tests, not plumbing.
 Install:
 
 ```bash
-uv add --dev git@github.com/qlrd/bornal
+uv add --dev git+https://github.com/qlrd/bornal.git
 ```
 
 **Scaffold**
@@ -128,6 +128,27 @@ uv run poe lint
 ```
 
 - `examples/` are the real-bitcoind integration tests
+
+# Motivation
+
+I previously contributed to the [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
+test framework trying to follow same principles used by Bitcoin-Core's one. Some
+issues faced when doing the same approach with
+**3 different bitcoin node implementations** (bitcoin-core, utreexod, floresta):
+
+- at least 2 different nodes should ran at same time
+- thread concurrencing between those three processes
+- plumb all test framework before do the first Floresta specific integration test
+
+The first two, was buggy and fixed by [@joaozinhom](https://github.com/joaozinhom)
+using `pytest`. The idea is that `pytest` already deals with threading and
+plubimg could be made by fixtures. This work is just a glue of his work as
+`pytest` registered plugin.
+
+The imagery proposition of a [bornal](https://pt.wikipedia.org/wiki/Bornal) --
+a brazilian heavy-duty, water-resistant tatic bag belt (not like we cannot have
+bugs) -- but the idea is to have all on hand to make integration tests as `pytest` plugin.
+
 
 ## Contributing
 
