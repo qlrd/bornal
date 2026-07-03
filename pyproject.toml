@@ -28,6 +28,7 @@ packages = ["src/bornal"]
 dev = [
     "poethepoet>=0.30",
     "ruff>=0.8",
+    "pytest-cov>5.0",
     "pre-commit>=3.7",
 ]
 
@@ -45,6 +46,18 @@ fail_under = 90
 help = "Run bornal CLI with virtualenv"
 cmd = "python -m bornal"
 
+[tool.poe.tasks.hooks]
+help = "Install the git pre-commit and commit-msg hooks"
+cmd = "pre-commit install --install-hooks"
+
+[tool.poe.tasks.test-verbose]
+help = "Run the whole suite verbosely (no coverage)"
+cmd = "pytest -v ./tests"
+
+[tool.poe.tasks.test-simple]
+help = "Run the whole suite without coverage"
+cmd = "pytest ./tests"
+
 [tool.poe.tasks.build]
 help = "Build wheel into dist/"
 cmd = "uv build --wheel"
@@ -61,14 +74,30 @@ cmd = "ruff format --check src"
 help = "Lint the source with ruff"
 cmd = "ruff check src"
 
-[tool.poe.tasks.fix]
+[tool.poe.tasks.lint-fix]
 help = "Lint check for issues with ruff"
 cmd = "ruff check --fix src"
 
-[tool.poe.tasks.clean]
-help = "Remove build artifacts and caches"
-shell = "rm -rf dist build *.egg-info htmlcov .coverage .pytest_cache && find . -type d -name __pycache__ -exec rm -rf {} +"
-
-[tool.poe.tasks.check]
+[tool.poe.tasks.lint-check]
 help = "Run lint then format"
 sequence = ["lint", "format"]
+
+[tool.poe.tasks.test-clean]
+help = "Erase coverage data and reports"
+shell = "rm -rf htmlcov coverage.xml .coverage"
+
+[tool.poe.tasks.test-unit]
+help = "Run unit tests (with coverage data)"
+cmd = "coverage run --append -m pytest ./tests/unit"
+
+[tool.poe.tasks.tests]
+help = "Alias for `test-unit`"
+ref = "test-unit"
+
+[tool.poe.tasks.test]
+help = "Alias for `test-unit`"
+ref = "test-unit"
+
+[tool.poe.tasks.pytest]
+help = "Alias for `test-unit`"
+ref = "test-unit"

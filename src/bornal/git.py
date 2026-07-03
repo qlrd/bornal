@@ -22,6 +22,16 @@ class Git:
         self._projpath = projpath
 
     @staticmethod
+    def init(path, quiet=True):
+        """Initialize a new repo at ``path``; return a ``Git`` bound to it."""
+        argv = ["git", "init"]
+        if quiet:
+            argv.append("-q")
+        argv.append(path)
+        _exec(argv)
+        return Git(path)
+
+    @staticmethod
     def clone(repo, dest, branch=None, depth=None):
         """Clone ``repo`` into ``dest``"""
         argv = ["git", "clone"]
@@ -44,7 +54,7 @@ class Git:
                 tags.append(ref[len("refs/tags/") :])
         return tags
 
-    def _run(self, cmd, **kwargs):
+    def _run(self, cmd, *args, **kwargs):
         flags = []
         for k, v in kwargs.items():
             if not v:
@@ -53,8 +63,16 @@ class Git:
             if not isinstance(v, bool):
                 flags.append(str(v))
         git = os.path.join(self._projpath, ".git")
-        argv = ["git", "--git-dir", git, "--work-tree", self._projpath, cmd, *flags]
-        return _exec(argv)
+        prefix = ["git", "--git-dir", git, "--work-tree", self._projpath]
+        return _exec([*prefix, cmd, *args, *flags])
+
+    def add(self, *paths):
+        """Stage ``paths`` for the next commit."""
+        return self._run("add", *paths)
+
+    def commit(self, message, quiet=True):
+        """Create a commit carrying ``message`` (identity comes from the env)."""
+        return self._run("commit", message=message, quiet=quiet)
 
     def log(self, oneline=True, L=""):
         commits: list[dict] = []
@@ -79,3 +97,7 @@ class Git:
     def revparse(self, show_toplevel=True):
         """Resolve the project's top-level dir via ``rev-parse``."""
         return self._run("rev-parse", show_toplevel=show_toplevel)
+
+    def branch(self, show_current=False):
+        """Query branches; with ``show_current`` return the checked-out branch."""
+        return self._run("branch", show_current=show_current)
