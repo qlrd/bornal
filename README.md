@@ -2,12 +2,19 @@
 
 This work is mainly inspired by [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
 integration test framework supported by the following idea: use a imagery
-proposition of a [bornal](https://pt.wikipedia.org/wiki/Bornal) -- a brazilian
-heavy-duty, water-resitant tatic-like bag belt used today by fireman (not like
-we cannot have bugs).
+proposition of a [bornal/embornal](https://pt.wikipedia.org/wiki/Bornal) -- a
+brazilian heavy-duty, water-resitant tatic-like bag belt used by camp workers
+with meals ("boia"), bottles of water and working tools.
 
-It builds bitcoin daemons from source, runs them on regtest, and hands your
-tests a ready JSON-RPC client — so you write integration tests, not plumbing.
+It scaffolds some test structure in a jekyll-like style and lets `pytest` knows
+how to builds bitcoin daemons (plural: WIP on implement `utreexod`, `florestad`,
+and `lianda`) from source, runs them on `regtest` (plan to add `signet`), and
+hands your tests a ready JSON-RPC client — so you write your integration tests,
+hacking through your preferred bitcoin lib, not plumbing through it.
+
+> The philosophy is not to rely on pre-built binaries for bitcoin reference and
+community implemenations (not because we cannot verify them locally on on CI,
+but because **is a choice is to rely on our bitcoin compilation**).
 
 ## Getting Started
 
@@ -16,6 +23,8 @@ Install:
 ```bash
 uv add --dev git+https://github.com/qlrd/bornal.git
 ```
+
+> I do not pretend yet add to `pip`
 
 **Scaffold**
 
@@ -36,6 +45,8 @@ it through their plugin system:
 INTEGRATION_TEMP_DIR=<.cache> uv pytest tests/integration/test_<feature>.py
 ```
 
+Where `<.cache>` is **your pre-built | compiled** bitcoin implementation.
+
 *build fresh bitcoin nodes*
 
 ```bash
@@ -48,21 +59,29 @@ uv pytest --build-bitcoin latest tests/integration/test_<feature>.py
 uv pytest --wallet tests/integration/test_<wallet_feat>.py 
 ```
 
-- Each daemon is a `pytest` plugin, that can be added through a `--build-<name>`
+- Each daemon is a `pytest` plugin
+- each plugin that can be added through a `--build-<name>` flag
 
-- `pytest --build-bitcoin 30.2` (or `latest` for the newest release) makes
-`bitcoind` available in the cache (reused unless `--force-build`), wipes its
-`data/` and `logs/` (unless `--preserve-data` is used), exports `BINARIES_DIR`
-,`INTEGRATION_TEMP_DIR` and `BITCOIN_CORE_PATH` environment , and runs your
-`tests/integration`
+I.e., `pytest --build-bitcoin 30.2` (or `latest` for the newest release) makes
+`bitcoind` available in the cache and have some additional flags and environment
+variables:
 
-- Add `--wallet` to build with wallet support.
-
+- reused unless `--force-build`), wipes its `data/` and `logs/`
+- (unless `--preserve-data` is used)
+- exports `BINARIES_DIR`
+- exports `INTEGRATION_TEMP_DIR`
+- exports  `BITCOIN_CORE_PATH`
+- `--wallet` to build with wallet support.
 - `--nproc N` sets the compile parallelism (the build's `-j`).
+
+and then runs your `tests/integration`. If you choose the "compilation-path",
+the next time you will not need to use `--build-*`.
 
 ## Writing Tests
 
-`bornal` registers as a pytest plugin and its fixtures are available on runtime:
+This is for writing test on **your project**. Once you have your `tests/integration`
+build (or already built and bought the idea), `bornal` registers this plugin as
+a pytest plugin and its fixtures are available on `pytest` runtime:
 
 ```python
 from bornal.testing import assert_wallet_roundtrip
@@ -72,8 +91,9 @@ def test_wallet(bitcoind_node):
     assert_wallet_roundtrip(bitcoind_node)
 ```
 
-Or subclass the `IntegrationTest` ABC, which mirrors [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
-integration test framework:
+Or subclass the `IntegrationTest` (an `ABC` derived class), which mirrors
+[getfloresta/Floresta](https://github.com/getfloresta/Floresta) integration
+test framework:
 
 ```python
 from bornal.node import IntegrationTest
@@ -89,17 +109,33 @@ class MyTest(IntegrationTest):
 
 ## Plugins
 
-Daemons are entry-point plugins (group `bornal.daemons`). One plugin wires three
-classes: `Compiler` (build the binary), `Daemon` (run it on regtest), `Cli` (talk
-JSON-RPC) — and declares the pytest build flag it contributes
-(`bitcoin-core` → `--build-bitcoin`):
+Daemons are entry-point plugins (group them by `bornal.daemons`). One plugin
+wires three classes:
+
+- `Compiler` (build the binary)
+- `Daemon` (the implementation daemon on regtest)
+- `Cli` (talk JSON-RPC like)
+— and declares the the pytest build flag it contributes (e.g.,
+`--<bitcoin-impl>` → `--build-<bitcoin-impl>`)
+
+For example:
 
 ```toml
 [project.entry-points."bornal.daemons"]
-bitcoin-core = "bornal.plugins.bitcoind:CoreCompiler"
+<bitcoin-impl> = "bornal.plugins.<bitcoin-impl>:CoreCompiler"
+```
+
+also you need to register fixtures on `src/bornal/fixtures.py` so it can be
+found by:
+
+```toml
+[project.entry-points.pytest11]
+bornal = "bornal.fixtures"
 ```
 
 ## Development
+
+`bornal` need `pytest` as `dep` and not `dev-dep`.
 
 ### Fetch the code
 
@@ -127,28 +163,24 @@ uv run poe format-check
 uv run poe lint
 ```
 
-- `examples/` are the real-bitcoind integration tests
+### Examples
+
+If you add some plugin, is really important to add some **examples** on `examples/`.
+They're real-bitcoind integration tests demos.
 
 # Motivation
 
-I previously contributed to the [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
-test framework trying to follow same principles used by Bitcoin-Core's one. Some
-issues faced when doing the same approach with
-**3 different bitcoin node implementations** (bitcoin-core, utreexod, floresta):
+A previously contribution to the [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
+test framework taught on how to follow some already coded principles of Bitcoin-Core
+test framework and thus I helped to improve it to support both `bitcoind`, `utreexod`,
+`florestad`.
 
-- at least 2 different nodes should ran at same time
-- thread concurrencing between those three processes
-- plumb all test framework before do the first Floresta specific integration test
+While it almost-work (in the sense with random failures in CI), this was fixed by
+[@joaozinhom](https://github.com/joaozinhom) using `pytest`. The idea is that
+`pytest` already deals with threading and plubimg could be made by fixtures.
 
-The first two, was buggy and fixed by [@joaozinhom](https://github.com/joaozinhom)
-using `pytest`. The idea is that `pytest` already deals with threading and
-plubimg could be made by fixtures. This work is just a glue of his work as
-`pytest` registered plugin.
-
-The imagery proposition of a [bornal](https://pt.wikipedia.org/wiki/Bornal) --
-a brazilian heavy-duty, water-resistant tatic bag belt (not like we cannot have
-bugs) -- but the idea is to have all on hand to make integration tests as `pytest` plugin.
-
+This work is just a glue of his work as `pytest` registered plugin plus a
+scaffolding and self-tests.
 
 ## Contributing
 
