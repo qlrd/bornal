@@ -1,4 +1,8 @@
+import base64
+import io
+import json
 import os
+import urllib.error
 from subprocess import TimeoutExpired
 from unittest.mock import MagicMock
 
@@ -36,6 +40,14 @@ class MockDaemon(Daemon):
 
     def args(self):
         return ["--flag"]
+
+
+_BASIC_AUTH = (
+    "Basic %s"
+    % base64.b64encode(
+        ("%s:%s" % (MockDaemon.rpc_user, MockDaemon.rpc_password)).encode()
+    ).decode()
+)
 
 
 class MockedSpyPopen:
@@ -120,3 +132,88 @@ def spy_popen(monkeypatch):
     popen = MockedSpyPopen()
     monkeypatch.setattr("subprocess.Popen", popen)
     return popen
+
+
+@pytest.fixture
+def mocked_rpc(monkeypatch):
+    """Spy ``urllib.request.urlopen`` for mocked JSON-RPC responses."""
+    rpc = {}
+
+    def rpc_handler(req, timeout=None):
+        rpc["req"] = req
+        payload = json.loads(req.data)
+        method, params = payload["method"], payload["params"]
+        if req.get_header("Authorization") != _BASIC_AUTH:
+            body = {"result": None, "error": "Not authorized"}
+        elif method == "getblockchaininfo":
+            # https://developer.bitcoin.org/reference/rpc/getblockchaininfo.html
+            body = {
+                "result": {
+                    "chain": "mocktest",
+                    "blocks": 0,
+                    "headers": 0,
+                    "bestblockhash": "0f9188f13cb7b2c71f2a335e3a4fc328"
+                    "bf5beb436012afca590b1a11466e2206",
+                    "difficulty": 4.656542373906925e-10,
+                    "mediantime": 1296688602,
+                    "verificationprogress": 1,
+                    "initialblockdownload": True,
+                    "chainwork": "0" * 63 + "2",
+                    "size_on_disk": 293,
+                    "pruned": False,
+                    "softforks": {},
+                    "warnings": "",
+                },
+                "error": None,
+            }
+        elif method == "getblockcount":
+            body = {"result": 21, "error": None}
+        elif method == "uptime":
+            body = {"result": 1, "error": None}
+        elif method == "generatetoaddress":
+            if 2 <= len(params) <= 3:
+                body = {
+                    "result": ["%064x" % height for height in range(1, params[0] + 1)],
+                    "error": None,
+                }
+            else:
+                body = {
+                    "result": None,
+                    "error": "need 2 or 3 params, provided %d" % len(params),
+                }
+        else:
+            body = {"result": -1, "error": "not implemented"}
+        rpc["res"] = body
+        data = json.dumps(body).encode()
+        if body.get("error"):
+            raise urllib.error.HTTPError(
+                req.full_url, 500, "Internal Server Error", {}, io.BytesIO(data)
+            )
+        return io.BytesIO(data)
+
+    monkeypatch.setattr("urllib.request.urlopen", rpc_handler)
+    return rpc
+
+
+@pytest.fixture
+def mocked_cli(mocked_daemon, spy_popen, mocked_rpc):
+    """A started ``MockDaemon``'s CLI, with process and transport mocked."""
+    cli = mocked_daemon.make_cli()
+    mocked_daemon.start()
+    try:
+        yield cli
+    finally:
+        mocked_daemon.stop()
+
+
+@pytest.fixture
+def mocked_cli_noauth(mocked_daemon, spy_popen, mocked_rpc):
+    """A started credential-less daemon's CLI, over the mocked transport."""
+    mocked_daemon.rpc_user = None
+    mocked_daemon.rpc_password = None
+    cli = mocked_daemon.make_cli()
+    mocked_daemon.start()
+    try:
+        yield cli
+    finally:
+        mocked_daemon.stop()
