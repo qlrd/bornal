@@ -60,6 +60,10 @@ class Cli(ABC):
             headers=self._headers(),
             method="POST",
         )
+
+        if not request.get_header("Authorization"):
+            raise CliError("Not authorized")
+
         self._log.debug("$ rpc %s %s", method, list(params))
         try:
             with urllib.request.urlopen(request, timeout=self.TIMEOUT) as response:
