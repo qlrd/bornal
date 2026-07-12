@@ -11,12 +11,12 @@ from bornal.cli import CliError
 def test_fail_basic_noauth_header(mocked_cli_noauth, mocked_rpc):
     with pytest.raises(CliError, match="Not authorized"):
         mocked_cli_noauth.call("getblockchaininfo")
-    assert "req" not in mocked_rpc
+    assert mocked_rpc.req is None
 
 
 def test_basic_auth_header(mocked_cli, mocked_rpc):
     mocked_cli.call("getblockchaininfo")
-    req, res = mocked_rpc["req"], mocked_rpc["res"]
+    req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
     auth = req.get_header("Authorization")
@@ -34,7 +34,7 @@ def test_basic_auth_header(mocked_cli, mocked_rpc):
 def test_not_implemented(mocked_cli, mocked_rpc):
     with pytest.raises(CliError, match="not implemented"):
         mocked_cli.call("h")
-    req, res = mocked_rpc["req"], mocked_rpc["res"]
+    req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
     assert json.loads(req.data) == {
@@ -43,13 +43,13 @@ def test_not_implemented(mocked_cli, mocked_rpc):
         "method": "h",
         "params": [],
     }
-    assert res["result"] == -1
+    assert res["result"] is None
     assert res["error"] == "not implemented"
 
 
 def test_payload(mocked_cli, mocked_rpc):
     mocked_cli.call("getblockcount")
-    req, res = mocked_rpc["req"], mocked_rpc["res"]
+    req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
     assert json.loads(req.data) == {
@@ -64,7 +64,7 @@ def test_payload(mocked_cli, mocked_rpc):
 
 def test_generatetoaddress(mocked_cli, mocked_rpc):
     hashes = mocked_cli.call("generatetoaddress", 101, "bcrt1qaddr")
-    req, res = mocked_rpc["req"], mocked_rpc["res"]
+    req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
     assert json.loads(req.data) == {

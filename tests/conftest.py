@@ -12,6 +12,7 @@ from bornal.cli import Cli
 from bornal.daemon import Daemon
 from bornal.git import Git
 from bornal.paths import Paths
+from bornal.plugins.bitcoind import BitcoindDaemon
 
 _GIT_ENV = {
     "GIT_CONFIG_GLOBAL": os.devnull,
@@ -42,12 +43,12 @@ class MockDaemon(Daemon):
         return ["--flag"]
 
 
-_BASIC_AUTH = (
-    "Basic %s"
-    % base64.b64encode(
-        ("%s:%s" % (MockDaemon.rpc_user, MockDaemon.rpc_password)).encode()
-    ).decode()
-)
+def basic_auth_header(user, password):
+    """The ``Authorization`` header value for HTTP basic auth"""
+    return "Basic %s" % base64.b64encode(("%s:%s" % (user, password)).encode()).decode()
+
+
+_BASIC_AUTH = basic_auth_header(MockDaemon.rpc_user, MockDaemon.rpc_password)
 
 
 class MockedSpyPopen:
@@ -88,6 +89,78 @@ class MockedSpyPopen:
 
         self.processes.append(mock_proc)
         return mock_proc
+
+
+class MockedSpyRpc:
+    """Spy JSON-RPC mocked transport for bitcoind responses."""
+
+    _RESPONSES = {
+        "uptime": 1,
+        "getblockcount": 0,
+        "stop": "Bitcoin Core stopping",
+        "getblockchaininfo": {
+            "chain": "mocktest",
+            "blocks": 0,
+            "headers": 0,
+            "bestblockhash": "0f9188f13cb7b2c71f2a335e3a4fc328"
+            "bf5beb436012afca590b1a11466e2206",
+            "difficulty": 4.656542373906925e-10,
+            "mediantime": 1296688602,
+            "verificationprogress": 1,
+            "initialblockdownload": True,
+            "chainwork": "0" * 63 + "2",
+            "size_on_disk": 293,
+            "pruned": False,
+            "softforks": {},
+            "warnings": "",
+        },
+    }
+
+    def __init__(self, basic_auth=None, responses=None):
+        self.basic_auth = basic_auth
+        self.stored = {**self._RESPONSES, **(responses or {})}
+        self.calls = []
+        self.requests = []
+        self.bodies = []
+
+    @property
+    def req(self):
+        return self.requests[-1] if self.requests else None
+
+    @property
+    def res(self):
+        return self.bodies[-1] if self.bodies else None
+
+    def __call__(self, req, timeout=None):
+        self.requests.append(req)
+        payload = json.loads(req.data)
+        method = payload["method"]
+        params = payload["params"]
+        self.calls.append(method)
+        if self.basic_auth and req.get_header("Authorization") != self.basic_auth:
+            body = {"result": None, "error": "Not authorized"}
+        elif method == "generatetoaddress":
+            if 2 <= len(params) <= 3:
+                body = {
+                    "result": ["%064x" % height for height in range(1, params[0] + 1)],
+                    "error": None,
+                }
+            else:
+                body = {
+                    "result": None,
+                    "error": "need 2 or 3 params, provided %d" % len(params),
+                }
+        elif method in self.stored:
+            body = {"result": self.stored[method], "error": None}
+        else:
+            body = {"result": None, "error": "not implemented"}
+        self.bodies.append(body)
+        data = json.dumps(body).encode()
+        if body["error"]:
+            raise urllib.error.HTTPError(
+                req.full_url, 500, "Internal Server Error", {}, io.BytesIO(data)
+            )
+        return io.BytesIO(data)
 
 
 @pytest.fixture
@@ -136,63 +209,10 @@ def spy_popen(monkeypatch):
 
 @pytest.fixture
 def mocked_rpc(monkeypatch):
-    """Spy ``urllib.request.urlopen`` for mocked JSON-RPC responses."""
-    rpc = {}
-
-    def rpc_handler(req, timeout=None):
-        rpc["req"] = req
-        payload = json.loads(req.data)
-        method, params = payload["method"], payload["params"]
-        if req.get_header("Authorization") != _BASIC_AUTH:
-            body = {"result": None, "error": "Not authorized"}
-        elif method == "getblockchaininfo":
-            # https://developer.bitcoin.org/reference/rpc/getblockchaininfo.html
-            body = {
-                "result": {
-                    "chain": "mocktest",
-                    "blocks": 0,
-                    "headers": 0,
-                    "bestblockhash": "0f9188f13cb7b2c71f2a335e3a4fc328"
-                    "bf5beb436012afca590b1a11466e2206",
-                    "difficulty": 4.656542373906925e-10,
-                    "mediantime": 1296688602,
-                    "verificationprogress": 1,
-                    "initialblockdownload": True,
-                    "chainwork": "0" * 63 + "2",
-                    "size_on_disk": 293,
-                    "pruned": False,
-                    "softforks": {},
-                    "warnings": "",
-                },
-                "error": None,
-            }
-        elif method == "getblockcount":
-            body = {"result": 21, "error": None}
-        elif method == "uptime":
-            body = {"result": 1, "error": None}
-        elif method == "generatetoaddress":
-            if 2 <= len(params) <= 3:
-                body = {
-                    "result": ["%064x" % height for height in range(1, params[0] + 1)],
-                    "error": None,
-                }
-            else:
-                body = {
-                    "result": None,
-                    "error": "need 2 or 3 params, provided %d" % len(params),
-                }
-        else:
-            body = {"result": -1, "error": "not implemented"}
-        rpc["res"] = body
-        data = json.dumps(body).encode()
-        if body.get("error"):
-            raise urllib.error.HTTPError(
-                req.full_url, 500, "Internal Server Error", {}, io.BytesIO(data)
-            )
-        return io.BytesIO(data)
-
-    monkeypatch.setattr("urllib.request.urlopen", rpc_handler)
-    return rpc
+    """Spy ``urllib.request.urlopen``, enforcing ``MockDaemon`` credentials."""
+    spy = MockedSpyRpc(basic_auth=_BASIC_AUTH, responses={"getblockcount": 21})
+    monkeypatch.setattr("urllib.request.urlopen", spy)
+    return spy
 
 
 @pytest.fixture
@@ -217,3 +237,32 @@ def mocked_cli_noauth(mocked_daemon, spy_popen, mocked_rpc):
         yield cli
     finally:
         mocked_daemon.stop()
+
+
+@pytest.fixture
+def mocked_explicit_bin(monkeypatch):
+    monkeypatch.setenv("BINARIES_DIR", "/explicit/bin")
+    monkeypatch.setenv("INTEGRATION_TEMP_DIR", "/tmp/run")
+
+
+@pytest.fixture
+def mocked_fallback_bin(monkeypatch):
+    monkeypatch.delenv("BINARIES_DIR", raising=False)
+    monkeypatch.setenv("INTEGRATION_TEMP_DIR", "/tmp/run")
+
+
+@pytest.fixture
+def mocked_env_bin(monkeypatch):
+    monkeypatch.setenv("INTEGRATION_TEMP_DIR", "/tmp/run")
+
+
+@pytest.fixture
+def spy_rpc(monkeypatch):
+    """Spy the RPC transport so node tests can assert the calls made"""
+    spy = MockedSpyRpc(
+        basic_auth=basic_auth_header(
+            BitcoindDaemon.rpc_user, BitcoindDaemon.rpc_password
+        )
+    )
+    monkeypatch.setattr("urllib.request.urlopen", spy)
+    return spy
