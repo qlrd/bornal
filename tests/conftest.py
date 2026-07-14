@@ -12,6 +12,7 @@ from bornal.cli import Cli
 from bornal.daemon import Daemon
 from bornal.git import Git
 from bornal.paths import Paths
+from bornal.plugins import bitcoind
 from bornal.plugins.bitcoind import BitcoindDaemon
 
 _GIT_ENV = {
@@ -163,6 +164,39 @@ class MockedSpyRpc:
         return io.BytesIO(data)
 
 
+class MockedSpyBuild:
+    """Spy the bitcoind build shell output"""
+
+    def __init__(self):
+        self.calls = []
+
+    def __iter__(self):
+        return iter(self.calls)
+
+    @staticmethod
+    def _setup(bindir):
+        os.makedirs(bindir, exist_ok=True)
+        open(os.path.join(bindir, "bitcoind"), "w").close()
+
+    def run(self, argv, cwd=None):
+        self.calls.append(argv)
+        if argv[:2] == ["cmake", "--build"]:
+            self._setup(os.path.join(argv[2], "bin"))
+        elif argv[0] == "make":
+            self._setup(os.path.join(cwd, "src"))
+
+    def clone(self, repo, dest, branch=None, depth=None):
+        argv = ["git", "clone"]
+        if depth:
+            argv += ["--depth", str(depth)]
+        if branch:
+            argv += ["--branch", branch]
+        argv += [repo, dest]
+        self.calls.append(argv)
+        os.makedirs(dest, exist_ok=True)
+        return dest
+
+
 @pytest.fixture
 def git_repo(tmp_path, monkeypatch):
     """A git repo with an 'init' commit, seeded through the ``Git`` wrapper."""
@@ -205,6 +239,22 @@ def spy_popen(monkeypatch):
     popen = MockedSpyPopen()
     monkeypatch.setattr("subprocess.Popen", popen)
     return popen
+
+
+@pytest.fixture
+def spy_build(monkeypatch):
+    """Spy the bitcoind build: the real ``CoreCompiler.ensure`` runs (revision
+    parsing, cmake/autotools dispatch, binary copy), but the shell-out boundary
+    is intercepted by ``MockedSpyBuild`` and host/network lookups are stubbed.
+    """
+    spy = MockedSpyBuild()
+    monkeypatch.setattr(bitcoind, "_on_path", lambda: None)
+    monkeypatch.setattr(bitcoind, "_check_compiler", lambda: None)
+    monkeypatch.setattr(bitcoind, "check_installed", lambda *a: None)
+    monkeypatch.setattr(bitcoind, "_run", spy.run)
+    monkeypatch.setattr(bitcoind.Git, "clone", staticmethod(spy.clone))
+    monkeypatch.setattr(bitcoind, "_latest_revision", lambda: "30.2")
+    return spy
 
 
 @pytest.fixture
