@@ -14,6 +14,7 @@ from bornal.git import Git
 from bornal.paths import Paths
 from bornal.plugins import bitcoind
 from bornal.plugins.bitcoind import BitcoindDaemon
+from bornal import fixtures
 
 _GIT_ENV = {
     "GIT_CONFIG_GLOBAL": os.devnull,
@@ -197,6 +198,16 @@ class MockedSpyBuild:
         return dest
 
 
+class MockPytestConfig:
+    """Minimal config for pytest"""
+
+    def __init__(self, **opts):
+        self._opts = opts
+
+    def getoption(self, name, default=None):
+        return self._opts.get(name, default)
+
+
 @pytest.fixture
 def git_repo(tmp_path, monkeypatch):
     """A git repo with an 'init' commit, seeded through the ``Git`` wrapper."""
@@ -316,3 +327,51 @@ def spy_rpc(monkeypatch):
     )
     monkeypatch.setattr("urllib.request.urlopen", spy)
     return spy
+
+
+@pytest.fixture
+def pytestconfig_minimal(monkeypatch, git_repo, tmp_path):
+    def _wrap(**over):
+        for var in (
+            "BINARIES_DIR",
+            "INTEGRATION_TEMP_DIR",
+            "BITCOIND",
+            "BITCOIN_CORE_PATH",
+        ):
+            monkeypatch.setenv(var, "")
+
+        base = dict(
+            verbose=0,
+            bornal_proj_path=str(git_repo),
+            bornal_tmp_path=str(tmp_path / "out"),
+            bornal_wallet=False,
+            bornal_force_build=False,
+            bornal_preserve_data=False,
+            bornal_nproc=None,
+            bornal_build_bitcoin_core=None,
+        )
+        base.update(over)
+        return MockPytestConfig(**base)
+
+    return _wrap
+
+
+@pytest.fixture
+def prepare_run_minimal(monkeypatch, pytestconfig_minimal):
+    def _wrap(version, wallet=False, force=False, nproc=None, preserve=False):
+        calls = []
+        monkeypatch.setattr(
+            fixtures, "ensure_daemons", lambda paths, **kw: calls.append(kw)
+        )
+        config = pytestconfig_minimal(
+            bornal_build_bitcoin_core=version,
+            bornal_wallet=wallet,
+            bornal_force_build=force,
+            bornal_nproc=nproc,
+            bornal_preserve_data=preserve,
+        )
+        tmp = config.getoption("bornal_tmp_path")
+        paths = fixtures.prepare_run(config, {"bitcoin-core": version})
+        return calls, tmp, paths
+
+    return _wrap
