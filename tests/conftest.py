@@ -14,6 +14,8 @@ from bornal.git import Git
 from bornal.paths import Paths
 from bornal.plugins import bitcoind
 from bornal.plugins.bitcoind import BitcoindDaemon
+from bornal.node import make_node
+from bornal.testing import COINBASE_MATURITY, COINBASE_SUBSIDY
 from bornal import fixtures
 
 _GIT_ENV = {
@@ -98,10 +100,9 @@ class MockedSpyRpc:
 
     _RESPONSES = {
         "uptime": 1,
-        "getblockcount": 0,
         "stop": "Bitcoin Core stopping",
         "getblockchaininfo": {
-            "chain": "mocktest",
+            "chain": "regtest",
             "blocks": 0,
             "headers": 0,
             "bestblockhash": "0f9188f13cb7b2c71f2a335e3a4fc328"
@@ -124,6 +125,19 @@ class MockedSpyRpc:
         self.calls = []
         self.requests = []
         self.bodies = []
+        self.height = 0
+        self._addresses = []
+        self._mined_to = None
+
+    def _new_address(self):
+        address = "bcrt1qspy%d" % len(self._addresses)
+        self._addresses.append(address)
+        return address
+
+    def _list_unspent(self):
+        if self.height <= COINBASE_MATURITY:
+            return []
+        return [{"address": self._mined_to, "amount": COINBASE_SUBSIDY}]
 
     @property
     def req(self):
@@ -143,6 +157,8 @@ class MockedSpyRpc:
             body = {"result": None, "error": "Not authorized"}
         elif method == "generatetoaddress":
             if 2 <= len(params) <= 3:
+                self.height += params[0]
+                self._mined_to = params[1]
                 body = {
                     "result": ["%064x" % height for height in range(1, params[0] + 1)],
                     "error": None,
@@ -154,6 +170,17 @@ class MockedSpyRpc:
                 }
         elif method in self.stored:
             body = {"result": self.stored[method], "error": None}
+        elif method == "getblockcount":
+            body = {"result": self.height, "error": None}
+        elif method == "createwallet":
+            body = {"result": {"name": params[0]}, "error": None}
+        elif method == "getnewaddress":
+            body = {"result": self._new_address(), "error": None}
+        elif method == "getbalance":
+            matured = self.height > COINBASE_MATURITY
+            body = {"result": COINBASE_SUBSIDY if matured else 0, "error": None}
+        elif method == "listunspent":
+            body = {"result": self._list_unspent(), "error": None}
         else:
             body = {"result": None, "error": "not implemented"}
         self.bodies.append(body)
@@ -373,5 +400,15 @@ def prepare_run_minimal(monkeypatch, pytestconfig_minimal):
         tmp = config.getoption("bornal_tmp_path")
         paths = fixtures.prepare_run(config, {"bitcoin-core": version})
         return calls, tmp, paths
+
+    return _wrap
+
+
+@pytest.fixture
+def run_daemon(tmp_path):
+    def _wrap(name):
+        node = make_node(name, "/bin", str(tmp_path))
+        node.start()
+        return node
 
     return _wrap

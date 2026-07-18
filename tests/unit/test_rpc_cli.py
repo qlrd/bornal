@@ -27,7 +27,7 @@ def test_basic_auth_header(mocked_cli, mocked_rpc):
         "method": "getblockchaininfo",
         "params": [],
     }
-    assert res["result"]["chain"] == "mocktest"
+    assert res["result"]["chain"] == "regtest"
     assert not res["error"]
 
 
