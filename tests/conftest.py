@@ -2,6 +2,7 @@ import base64
 import io
 import json
 import os
+import sys
 import urllib.error
 from subprocess import TimeoutExpired
 from unittest.mock import MagicMock
@@ -17,6 +18,7 @@ from bornal.plugins.bitcoind import BitcoindDaemon
 from bornal.node import make_node
 from bornal.testing import COINBASE_MATURITY, COINBASE_SUBSIDY
 from bornal import fixtures
+from bornal import main
 
 _GIT_ENV = {
     "GIT_CONFIG_GLOBAL": os.devnull,
@@ -410,5 +412,26 @@ def run_daemon(tmp_path):
         node = make_node(name, "/bin", str(tmp_path))
         node.start()
         return node
+
+    return _wrap
+
+
+@pytest.fixture
+def run_cli(monkeypatch):
+    def _wrap(*argv):
+        monkeypatch.setattr(sys, "argv", ["bornal", *argv])
+        main()
+
+    return _wrap
+
+
+@pytest.fixture
+def integrate(git_repo, tmp_path, run_cli):
+    def _wrap(name, *args):
+        tmp = str(tmp_path / "out")
+        run_cli("--proj-path", str(git_repo), "--tmp-path", tmp, "create", *args)
+        return os.path.join(
+            os.path.realpath(str(git_repo)), "tests", "integration", name
+        )
 
     return _wrap
