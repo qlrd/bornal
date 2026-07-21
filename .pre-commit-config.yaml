@@ -18,6 +18,14 @@ repos:
         types: [python]
         pass_filenames: false
 
+      - id: poe-tests
+        name: poe tests
+        entry: uv run poe tests
+        language: system
+        types_or: [python, toml]
+        pass_filenames: false
+        files: ^(pyproject\.toml$|src/|tests/)
+
   - repo: https://github.com/compilerla/conventional-pre-commit
     rev: v4.4.0
     hooks:

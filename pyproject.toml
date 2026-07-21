@@ -90,14 +90,18 @@ shell = "rm -rf htmlcov coverage.xml .coverage"
 help = "Run unit tests (with coverage data)"
 cmd = "coverage run --append -m pytest ./tests/unit"
 
+[tool.poe.tasks.test-functional]
+help = "Run functional tests (with coverage data)"
+cmd = "coverage run --append -m pytest ./tests/functional"
+
+[tool.poe.tasks.coverage-report]
+help = "Report accumulated coverage (gate: fail_under)"
+cmd = "coverage report"
+
+[tool.poe.tasks.test-cov]
+help = "Full suite behind the coverage gate: clean, unit, functional, report"
+sequence = ["test-clean", "test-unit", "test-functional", "coverage-report"]
+
 [tool.poe.tasks.tests]
-help = "Alias for `test-unit`"
-ref = "test-unit"
-
-[tool.poe.tasks.test]
-help = "Alias for `test-unit`"
-ref = "test-unit"
-
-[tool.poe.tasks.pytest]
-help = "Alias for `test-unit`"
-ref = "test-unit"
+help = "Alias for `test-cov`"
+ref = "test-cov"
