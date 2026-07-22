@@ -9,6 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import runpy
+
 from bornal.cli import Cli
 from bornal.daemon import Daemon
 from bornal.git import Git
@@ -433,5 +435,21 @@ def integrate(git_repo, tmp_path, run_cli):
         return os.path.join(
             os.path.realpath(str(git_repo)), "tests", "integration", name
         )
+
+    return _wrap
+
+
+@pytest.fixture
+def run(git_repo, tmp_path, monkeypatch):
+    """`python -m bornal --proj-path <path> --tmp-path <tmp> <cmd>`"""
+
+    def _wrap(*args):
+        tmp = str(tmp_path / "out")
+        monkeypatch.setattr(
+            sys,
+            "argv",
+            ["bornal", "--proj-path", str(git_repo), "--tmp-path", tmp, *args],
+        )
+        runpy.run_module("bornal", run_name="__main__")
 
     return _wrap
