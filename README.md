@@ -1,37 +1,47 @@
 # bornal
 
 This work is mainly inspired by [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
-integration test framework supported by the following idea: use a imagery
-proposition of a [bornal/embornal](https://pt.wikipedia.org/wiki/Bornal) -- a
-brazilian heavy-duty, water-resitant tatic-like bag belt used by camp workers
-with meals ("boia"), bottles of water and working tools.
+and [wizardsardine/liana](https://github.com/wizardsardine/liana) integration
+test framework(s).
 
-It scaffolds some test structure in a jekyll-like style and lets `pytest` knows
-how to builds bitcoin daemons (plural: WIP on implement `utreexod`, `florestad`,
-and `lianda`) from source, runs them on `regtest` (plan to add `signet`), and
-hands your tests a ready JSON-RPC client — so you write your integration tests,
-hacking through your preferred bitcoin lib, not plumbing through it.
+It scaffolds some test structure in a jekyll-like style and lets `pytest` know
+how to build bitcoin regtest daemons from source:
 
 > The philosophy is not to rely on pre-built binaries for bitcoin reference and
-community implemenations (not because we cannot verify them locally on on CI,
-but because **is a choice is to rely on our bitcoin compilation**).
+community implementations (not because we cannot verify them locally or on CI,
+but because **it is a choice to rely on a runtime-specific bitcoin
+compilation built for the test's purpose**).
+
+- `bitcoind`
+- `utreexod` (TODO)
+- `florestad` (TODO)
+- `lianad` (TODO)
+
+and hands your tests a ready JSON-RPC client — so you write your integration
+tests, hacking through your preferred bitcoin lib, not plumbing through it.
+
+> [!WARNING]
+> This is intended basically for a "krux-ecosystem" integration tests setup
+([krux](https://github.com/selfcustody/krux), [kern](https://github.com/odudex/Kern),
+or any related project) without bloating up those repos.
 
 ## Getting Started
 
 Install:
 
 ```bash
+# prefer pinning to a tag or commit for reproducibility, e.g.
+# uv add --dev git+https://github.com/qlrd/bornal.git@<tag-or-commit>
 uv add --dev git+https://github.com/qlrd/bornal.git
 ```
-
-> I do not pretend yet add to `pip`
 
 **Scaffold**
 
 Scaffold an example test, then run it through the pytest plugin:
 
 ```bash
-uv bornal create <feature> --template <template>
+# We use uv, but you could use poetry or venv
+uv run bornal create <feature> --template <template>
 ```
 
 `bornal create <feature>` only scaffolds some files into your project.
@@ -42,7 +52,7 @@ This is the fun part: you skip the main coding setup and just let `pytest` know
 it through their plugin system:
 
 ```bash
-INTEGRATION_TEMP_DIR=<.cache> uv pytest tests/integration/test_<feature>.py
+INTEGRATION_TEMP_DIR=<.cache> uv run pytest tests/integration/test_<feature>.py
 ```
 
 Where `<.cache>` is **your pre-built | compiled** bitcoin implementation.
@@ -50,13 +60,13 @@ Where `<.cache>` is **your pre-built | compiled** bitcoin implementation.
 *build fresh bitcoin nodes*
 
 ```bash
-uv pytest --build-bitcoin latest tests/integration/test_<feature>.py
+uv run pytest --build-bitcoin latest tests/integration/test_<feature>.py
 ```
 
 *run with wallet support*
 
 ```bash
-uv pytest --wallet tests/integration/test_<wallet_feat>.py 
+uv run pytest --wallet tests/integration/test_<wallet_feat>.py 
 ```
 
 - Each daemon is a `pytest` plugin
@@ -115,7 +125,7 @@ wires three classes:
 - `Compiler` (build the binary)
 - `Daemon` (the implementation daemon on regtest)
 - `Cli` (talk JSON-RPC like)
-— and declares the the pytest build flag it contributes (e.g.,
+— and declares the pytest build flag it contributes (e.g.,
 `--<bitcoin-impl>` → `--build-<bitcoin-impl>`)
 
 For example:
@@ -177,10 +187,13 @@ test framework and thus I helped to improve it to support both `bitcoind`, `utre
 
 While it almost-work (in the sense with random failures in CI), this was fixed by
 [@joaozinhom](https://github.com/joaozinhom) using `pytest`. The idea is that
-`pytest` already deals with threading and plubimg could be made by fixtures.
+`pytest` already deals with threading and plumbing could be made by fixtures.
 
-This work is just a glue of his work as `pytest` registered plugin plus a
-scaffolding and self-tests.
+Afterwards, I learned about the test framework made by [wizardsardine/liana](https://github.com/wizardsardine/liana)
+that was made before and is pretty similar, with some nice features.
+
+This WIP is a glue of their work as `pytest` registered plugin plus a
+scaffolding and self-tests for custom daemons.
 
 ## Contributing
 
