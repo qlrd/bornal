@@ -9,7 +9,7 @@ from bornal.node import (
     env_data_dir,
     make_node,
 )
-from bornal.plugins.bitcoind import BitcoindCli, BitcoindDaemon
+from bornal.plugins.bitcoind import BitcoindClient, BitcoindDaemon
 
 
 def test_env_binaries_dir_prefers_explicit(mocked_explicit_bin):
@@ -41,8 +41,8 @@ def test_make_node_regtest(spy_popen, spy_rpc, tmp_path):
         assert "-chain=regtest" in argv
         assert isinstance(node, Node)
         assert isinstance(node.daemon, BitcoindDaemon)
-        assert isinstance(node.cli, BitcoindCli)
-        assert node.cli.get_block_count() == 0
+        assert isinstance(node.client, BitcoindClient)
+        assert node.client.get_block_count() == 0
     finally:
         node.stop()
     assert "stop" in spy_rpc.calls
@@ -55,7 +55,7 @@ def test_integration_success(spy_popen, spy_rpc, tmp_path):
             self.add_node("bitcoin-core")
 
         def run_test(self):
-            assert self.nodes[0].cli.get_block_count() == 0
+            assert self.nodes[0].client.get_block_count() == 0
 
     MockTest("/bin", str(tmp_path)).main()
     assert "stop" in spy_rpc.calls

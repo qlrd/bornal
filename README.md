@@ -114,7 +114,7 @@ class MyTest(IntegrationTest):
         self.add_node("bitcoin-core")
 
     def run_test(self):
-        assert self.nodes[0].cli.get_block_count() == 0
+        assert self.nodes[0].client.get_block_count() == 0
 ```
 
 ## Plugins
@@ -124,7 +124,7 @@ wires three classes:
 
 - `Compiler` (build the binary)
 - `Daemon` (the implementation daemon on regtest)
-- `Cli` (talk JSON-RPC like)
+- `Client` (talk JSON-RPC like)
 — and declares the pytest build flag it contributes (e.g.,
 `--<bitcoin-impl>` → `--build-<bitcoin-impl>`)
 

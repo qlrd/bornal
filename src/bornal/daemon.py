@@ -24,7 +24,7 @@ ENTRY_POINT_GROUP = "bornal.daemons"
 # ``bornal`` stays agnostic: it never imports a compiler directly, it only
 # discovers whatever plugins are installed.
 class Compiler(ABC):
-    """Compiles a bitcoin daemon binary from source (no external cli)."""
+    """Compiles a bitcoin daemon binary from source (no external client)."""
 
     name = ""
     """Plugin related compiler name"""
@@ -61,7 +61,7 @@ def free_port():
 class Daemon(ABC):
     """A running daemon, launched from a compiled or pre-built binary."""
 
-    cli_class = None
+    client_class = None
     rpc_user = None
     rpc_password = None
 
@@ -117,11 +117,11 @@ class Daemon(ABC):
     def is_running(self) -> bool:
         return self._process is not None and self._process.poll() is None
 
-    def make_cli(self):
-        """A ``Cli`` wired to this daemon's RPC endpoint."""
-        if self.cli_class is None:
-            raise NotImplementedError("%s has no cli_class" % type(self).__name__)
-        return self.cli_class(
+    def make_client(self):
+        """A ``Client`` wired to this daemon's RPC endpoint."""
+        if self.client_class is None:
+            raise NotImplementedError("%s has no client_class" % type(self).__name__)
+        return self.client_class(
             host=self._host,
             port=self._port,
             user=self.rpc_user,

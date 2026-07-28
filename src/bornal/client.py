@@ -7,14 +7,14 @@ from abc import ABC, abstractmethod
 
 from .logger import LOG
 
-__all__ = ["Cli", "CliError"]
+__all__ = ["Client", "ClientError"]
 
 
-class CliError(RuntimeError):
+class ClientError(RuntimeError):
     """A JSON-RPC call failed (transport error or an error response)."""
 
 
-class Cli(ABC):
+class Client(ABC):
     """Abstract JSON-RPC client for a daemon"""
 
     TIMEOUT = 30
@@ -62,7 +62,7 @@ class Cli(ABC):
         )
 
         if not request.get_header("Authorization"):
-            raise CliError("Not authorized")
+            raise ClientError("Not authorized")
 
         self._log.debug("$ rpc %s %s", method, list(params))
         try:
@@ -70,17 +70,18 @@ class Cli(ABC):
                 body = json.load(response)
         except urllib.error.HTTPError as exc:
             # Daemons (e.g. bitcoind) return RPC errors as HTTP 500 with a JSON
-            # error body; read it so the message survives. A non-JSON body
-            # (e.g. warmup 503) just becomes a transport error.
+            # error body; read it so the message survives.
             try:
                 body = json.load(exc)
             except (ValueError, OSError):
-                raise CliError("rpc %s failed: HTTP %s" % (method, exc.code)) from exc
+                raise ClientError(
+                    "rpc %s failed: HTTP %s" % (method, exc.code)
+                ) from exc
         except urllib.error.URLError as exc:
-            raise CliError("rpc %s unreachable: %s" % (method, exc.reason)) from exc
+            raise ClientError("rpc %s unreachable: %s" % (method, exc.reason)) from exc
 
         if body.get("error"):
-            raise CliError("rpc %s error: %s" % (method, body["error"]))
+            raise ClientError("rpc %s error: %s" % (method, body["error"]))
         return body.get("result")
 
     def is_up(self) -> bool:
@@ -88,14 +89,14 @@ class Cli(ABC):
         try:
             self.call("uptime")
             return True
-        except CliError:
+        except ClientError:
             return False
 
     def wait_until_up(self, timeout=30, interval=0.25):
-        """Block until the RPC server responds, or raise ``CliError`` on timeout."""
+        """Block until the RPC server responds, or raise ``ClientError`` on timeout."""
         deadline = time.monotonic() + timeout
         while time.monotonic() < deadline:
             if self.is_up():
                 return
             time.sleep(interval)
-        raise CliError("rpc server at %s not up after %ss" % (self.url, timeout))
+        raise ClientError("rpc server at %s not up after %ss" % (self.url, timeout))

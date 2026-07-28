@@ -1,4 +1,5 @@
-from .cli import CliError
+from .client import ClientError
+from .logger import LOG
 
 __all__ = ["COINBASE_MATURITY", "COINBASE_SUBSIDY", "assert_wallet_roundtrip"]
 
@@ -8,26 +9,26 @@ COINBASE_MATURITY = 100
 
 def assert_wallet_roundtrip(node, block_amount=0):
     """Create a wallet, mine past maturity, assert the matured balance + UTXOs"""
-    cli = node.cli
-    assert cli.get_blockchain_info()["chain"] == "regtest"
-    print(cli.get_block_count())
-    assert cli.get_block_count() == block_amount
+    client = node.client
+    assert client.get_blockchain_info()["chain"] == "regtest"
+    LOG.debug(client.get_block_count())
+    assert client.get_block_count() == block_amount
 
     try:
-        cli.create_wallet("bornal-wallet")
-    except CliError as exc:
+        client.create_wallet("bornal-wallet")
+    except ClientError as exc:
         raise AssertionError(
             "createwallet failed — was bitcoind built without wallet support? "
             "run with --wallet (%s)" % exc
         ) from exc
-    address = cli.get_new_address()
+    address = client.get_new_address()
 
     blocks = COINBASE_MATURITY + 1
-    cli.generate_to_address(blocks, address)
-    assert cli.get_block_count() == blocks
+    client.generate_to_address(blocks, address)
+    assert client.get_block_count() == blocks
 
-    assert cli.get_balance() == COINBASE_SUBSIDY
+    assert client.get_balance() == COINBASE_SUBSIDY
 
-    unspent = cli.list_unspent()
+    unspent = client.list_unspent()
     assert len(unspent) >= 1
     assert any(utxo["address"] == address for utxo in unspent)

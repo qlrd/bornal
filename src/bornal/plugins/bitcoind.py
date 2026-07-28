@@ -4,13 +4,13 @@ import shutil
 import subprocess
 import tempfile
 
-from ..cli import Cli
+from ..client import Client
 from ..daemon import Compiler, Daemon
 from ..deps import check_installed
 from ..git import Git
 from ..logger import LOG, fail
 
-__all__ = ["BitcoindCli", "BitcoindDaemon", "CoreCompiler"]
+__all__ = ["BitcoindClient", "BitcoindDaemon", "CoreCompiler"]
 
 _NAME = "bitcoin-core"
 _REPO = "https://github.com/bitcoin/bitcoin"
@@ -216,7 +216,7 @@ class CoreCompiler(Compiler):
         }
 
 
-class BitcoindCli(Cli):
+class BitcoindClient(Client):
     """JSON-RPC client for bitcoind"""
 
     name = _NAME
@@ -252,7 +252,7 @@ class BitcoindDaemon(Daemon):
     (default: regtest)"""
 
     name = _NAME
-    cli_class = BitcoindCli
+    client_class = BitcoindClient
     rpc_user = _NAME.lower()
     rpc_password = _NAME.lower()
 
