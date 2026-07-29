@@ -11,7 +11,7 @@ import pytest
 
 import runpy
 
-from bornal.cli import Cli
+from bornal.client import Client
 from bornal.daemon import Daemon
 from bornal.git import Git
 from bornal.paths import Paths
@@ -32,14 +32,14 @@ _GIT_ENV = {
 }
 
 
-class MockCli(Cli):
+class MockClient(Client):
     @property
     def jsonrpc_version(self):
         return "1.0"
 
 
 class MockDaemon(Daemon):
-    cli_class = MockCli
+    client_class = MockClient
     rpc_user = "mocku"
     rpc_password = "liar"
 
@@ -269,7 +269,7 @@ def clear_cache_env(monkeypatch):
 
 @pytest.fixture
 def mocked_daemon(tmp_path):
-    """Initialize some mocked daemon and cli for the unit tests."""
+    """Initialize some mocked daemon and client for the unit tests."""
     return MockDaemon(
         binaries_dir="/bin", datadir=str(tmp_path), port=5555, extra_args=["-extra"]
     )
@@ -308,25 +308,25 @@ def mocked_rpc(monkeypatch):
 
 
 @pytest.fixture
-def mocked_cli(mocked_daemon, spy_popen, mocked_rpc):
-    """A started ``MockDaemon``'s CLI, with process and transport mocked."""
-    cli = mocked_daemon.make_cli()
+def mocked_client(mocked_daemon, spy_popen, mocked_rpc):
+    """A started ``MockDaemon``'s client, with process and transport mocked."""
+    client = mocked_daemon.make_client()
     mocked_daemon.start()
     try:
-        yield cli
+        yield client
     finally:
         mocked_daemon.stop()
 
 
 @pytest.fixture
-def mocked_cli_noauth(mocked_daemon, spy_popen, mocked_rpc):
-    """A started credential-less daemon's CLI, over the mocked transport."""
+def mocked_client_noauth(mocked_daemon, spy_popen, mocked_rpc):
+    """A started credential-less daemon's client, over the mocked transport."""
     mocked_daemon.rpc_user = None
     mocked_daemon.rpc_password = None
-    cli = mocked_daemon.make_cli()
+    client = mocked_daemon.make_client()
     mocked_daemon.start()
     try:
-        yield cli
+        yield client
     finally:
         mocked_daemon.stop()
 

@@ -1,7 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 
-from .cli import CliError
+from .client import ClientError
 from .daemon import get
 from .logger import LOG
 
@@ -27,23 +27,23 @@ def env_data_dir():
 
 
 class Node:
-    """A started daemon plus the ``Cli`` to talk to it"""
+    """A ``Daemon`` plus the ``Client`` to talk to it"""
 
-    def __init__(self, daemon, cli=None, log=None):
+    def __init__(self, daemon, client=None, log=None):
         self.daemon = daemon
-        self.cli = cli or daemon.make_cli()
+        self.client = client or daemon.make_client()
         self._log = log or LOG
 
     def start(self):
         self.daemon.start()
-        self.cli.wait_until_up()
-        self._log.debug("node '%s' up at %s", self.daemon.binary_name, self.cli.url)
+        self.client.wait_until_up()
+        self._log.debug("node '%s' up at %s", self.daemon.binary_name, self.client.url)
         return self
 
     def stop(self):
         try:
-            self.cli.call("stop")
-        except CliError:
+            self.client.call("stop")
+        except ClientError:
             pass
         self.daemon.stop()
         return self

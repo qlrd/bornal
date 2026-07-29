@@ -42,9 +42,9 @@ Build the daemon and run this test with the bornal's ``pytest`` plugin::
 _TEST_BODY = '''\
 def {func}(node):
     """Start a regtest node and assert a clean chain."""
-    cli = node("{daemon}").cli
-    assert cli.get_blockchain_info()["chain"] == "regtest"
-    assert cli.get_block_count() == 0
+    client = node("{daemon}").client
+    assert client.get_blockchain_info()["chain"] == "regtest"
+    assert client.get_block_count() == 0
 '''
 
 _WALLET_BODY = '''\

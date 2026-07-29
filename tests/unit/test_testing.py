@@ -1,8 +1,8 @@
-# These tests drive areal ``Node/Cli```; only the process and
+# These tests drive a real ``Node/Client```; only the process and
 # the JSON-RPC transport are spied
 import pytest
 
-from bornal.cli import CliError
+from bornal.client import ClientError
 from bornal.testing import assert_wallet_roundtrip
 
 
@@ -19,9 +19,9 @@ def test_assert_wallet_roundtrip_error(run_daemon, spy_popen, spy_rpc):
     node = run_daemon("bitcoin-core")
 
     def create_wallet(*args, **kwargs):
-        raise CliError("not implemented")
+        raise ClientError("not implemented")
 
-    node.cli.create_wallet = create_wallet
+    node.client.create_wallet = create_wallet
 
     with pytest.raises(AssertionError, match="not implemented"):
         assert_wallet_roundtrip(node)

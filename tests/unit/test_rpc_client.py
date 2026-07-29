@@ -5,17 +5,17 @@ import urllib.error
 
 import pytest
 
-from bornal.cli import CliError
+from bornal.client import ClientError
 
 
-def test_fail_basic_noauth_header(mocked_cli_noauth, mocked_rpc):
-    with pytest.raises(CliError, match="Not authorized"):
-        mocked_cli_noauth.call("getblockchaininfo")
+def test_fail_basic_noauth_header(mocked_client_noauth, mocked_rpc):
+    with pytest.raises(ClientError, match="Not authorized"):
+        mocked_client_noauth.call("getblockchaininfo")
     assert mocked_rpc.req is None
 
 
-def test_basic_auth_header(mocked_cli, mocked_rpc):
-    mocked_cli.call("getblockchaininfo")
+def test_basic_auth_header(mocked_client, mocked_rpc):
+    mocked_client.call("getblockchaininfo")
     req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
@@ -31,9 +31,9 @@ def test_basic_auth_header(mocked_cli, mocked_rpc):
     assert not res["error"]
 
 
-def test_not_implemented(mocked_cli, mocked_rpc):
-    with pytest.raises(CliError, match="not implemented"):
-        mocked_cli.call("h")
+def test_not_implemented(mocked_client, mocked_rpc):
+    with pytest.raises(ClientError, match="not implemented"):
+        mocked_client.call("h")
     req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
@@ -47,8 +47,8 @@ def test_not_implemented(mocked_cli, mocked_rpc):
     assert res["error"] == "not implemented"
 
 
-def test_payload(mocked_cli, mocked_rpc):
-    mocked_cli.call("getblockcount")
+def test_payload(mocked_client, mocked_rpc):
+    mocked_client.call("getblockcount")
     req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
@@ -62,8 +62,8 @@ def test_payload(mocked_cli, mocked_rpc):
     assert not res["error"]
 
 
-def test_generatetoaddress(mocked_cli, mocked_rpc):
-    hashes = mocked_cli.call("generatetoaddress", 101, "bcrt1qaddr")
+def test_generatetoaddress(mocked_client, mocked_rpc):
+    hashes = mocked_client.call("generatetoaddress", 101, "bcrt1qaddr")
     req, res = mocked_rpc.req, mocked_rpc.res
     assert req.method == "POST"
     assert req.full_url == "http://127.0.0.1:5555"
@@ -79,12 +79,12 @@ def test_generatetoaddress(mocked_cli, mocked_rpc):
     assert not res["error"]
 
 
-def test_error_response_raises(mocked_cli, mocked_rpc):
-    with pytest.raises(CliError, match="need 2 or 3 params, provided 1"):
-        mocked_cli.call("generatetoaddress", 101)
+def test_error_response_raises(mocked_client, mocked_rpc):
+    with pytest.raises(ClientError, match="need 2 or 3 params, provided 1"):
+        mocked_client.call("generatetoaddress", 101)
 
 
-def test_clierror_internal(mocked_cli, monkeypatch):
+def test_clierror_internal(mocked_client, monkeypatch):
     def rpc_error(req, timeout=None):
         raise urllib.error.HTTPError(
             req.full_url,
@@ -95,48 +95,48 @@ def test_clierror_internal(mocked_cli, monkeypatch):
         )
 
     monkeypatch.setattr("urllib.request.urlopen", rpc_error)
-    with pytest.raises(CliError, match="rpc fail"):
-        mocked_cli.call("getblockcount")
+    with pytest.raises(ClientError, match="rpc fail"):
+        mocked_client.call("getblockcount")
 
 
-def test_httperror(mocked_cli, monkeypatch):
+def test_httperror(mocked_client, monkeypatch):
     def handle(req, timeout=None):
         raise urllib.error.HTTPError(
             req.full_url, 503, "handle", {}, io.BytesIO(b"not json")
         )
 
     monkeypatch.setattr("urllib.request.urlopen", handle)
-    with pytest.raises(CliError, match="HTTP 503"):
-        mocked_cli.call("getblockcount")
+    with pytest.raises(ClientError, match="HTTP 503"):
+        mocked_client.call("getblockcount")
 
 
-def test_urlerror(mocked_cli, monkeypatch):
+def test_urlerror(mocked_client, monkeypatch):
     def refused(req, timeout=None):
         raise urllib.error.URLError("connection refused")
 
     monkeypatch.setattr("urllib.request.urlopen", refused)
-    with pytest.raises(CliError, match="unreachable"):
-        mocked_cli.call("getblockcount")
+    with pytest.raises(ClientError, match="unreachable"):
+        mocked_client.call("getblockcount")
 
 
-def test_is_up_(mocked_cli, monkeypatch):
-    assert mocked_cli.is_up() is True
+def test_is_up_(mocked_client, monkeypatch):
+    assert mocked_client.is_up() is True
 
     def down(req, timeout=None):
         raise urllib.error.URLError("down")
 
     monkeypatch.setattr("urllib.request.urlopen", down)
-    assert mocked_cli.is_up() is False
+    assert mocked_client.is_up() is False
 
 
-def test_wait_until_up(mocked_cli):
-    mocked_cli.wait_until_up(timeout=1)
+def test_wait_until_up(mocked_client):
+    mocked_client.wait_until_up(timeout=1)
 
 
-def test_timeout(mocked_cli, monkeypatch):
+def test_timeout(mocked_client, monkeypatch):
     def handle(req, timeout=None):
         raise urllib.error.URLError("mocku")
 
     monkeypatch.setattr("urllib.request.urlopen", handle)
-    with pytest.raises(CliError, match="not up"):
-        mocked_cli.wait_until_up(timeout=0)
+    with pytest.raises(ClientError, match="not up"):
+        mocked_client.wait_until_up(timeout=0)

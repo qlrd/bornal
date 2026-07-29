@@ -30,7 +30,7 @@ def test_create_scaffold(integrate):
     body = open(dest).read()
     print(body)
     assert "def test_myfeat(node):" in body
-    assert "assert cli.get_blockchain_info()" in body
+    assert "assert client.get_blockchain_info()" in body
     # a second run without --force
     with pytest.raises(SystemExit):
         integrate("test_myfeat.py", "myfeat")
@@ -56,7 +56,7 @@ def test_create_fail(integrate):
 def test_create_default_template(integrate):
     dest = integrate("test_bitcoin_core.py")
     body = open(dest).read()
-    assert 'cli.get_blockchain_info()["chain"] == "regtest"' in body
+    assert 'client.get_blockchain_info()["chain"] == "regtest"' in body
     assert "assert_wallet_roundtrip" not in body
 
 

@@ -93,12 +93,12 @@ def test_network_default_regtest(mocked_daemon):
 
 
 def test_endpoint(mocked_daemon):
-    assert mocked_daemon.make_cli().url == "http://127.0.0.1:5555"
+    assert mocked_daemon.make_client().url == "http://127.0.0.1:5555"
 
 
-def test_make_cli_without_cli(tmp_path, mocked_daemon):
-    class _NoCli(mocked_daemon.__class__):
-        cli_class = None
+def test_make_client_without_client(tmp_path, mocked_daemon):
+    class _NoClient(mocked_daemon.__class__):
+        client_class = None
 
     with pytest.raises(NotImplementedError):
-        _NoCli("/bin", str(tmp_path), port=5555).make_cli()
+        _NoClient("/bin", str(tmp_path), port=5555).make_client()
