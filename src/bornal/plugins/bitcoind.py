@@ -162,7 +162,13 @@ class CoreCompiler(Compiler):
         wanted = {"revision": revision or "latest", "wallet": bool(wallet)}
         wants_specific = wallet or revision is not None
 
-        if not (force or wants_specific):
+        # find first in already compiled binaries at cache
+        if os.path.exists(dest) and not force:
+            if not wants_specific or _read_build_meta(paths.binaries_dir) == wanted:
+                LOG.info("%s already present (matching build), skipping", self.name)
+                return dest
+            LOG.info("%s present but built differently — rebuilding", self.name)
+        elif not (force or wants_specific):
             found = _on_path()
             if found:
                 LOG.info("using bitcoind from PATH (%s)", found)
@@ -171,12 +177,6 @@ class CoreCompiler(Compiler):
                     paths.binaries_dir, {"revision": "path", "wallet": None}
                 )
                 return dest
-
-        if os.path.exists(dest) and not force:
-            if not wants_specific or _read_build_meta(paths.binaries_dir) == wanted:
-                LOG.info("%s already present (matching build), skipping", self.name)
-                return dest
-            LOG.info("%s present but built differently — rebuilding", self.name)
 
         _check_compiler()
         check_installed("git")
