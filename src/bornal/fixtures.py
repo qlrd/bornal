@@ -23,6 +23,7 @@ from . import daemon
 from .logger import LOG, set_verbose
 from .node import env_binaries_dir, env_data_dir, make_node
 from .paths import Paths
+from .plugins.bitcoind import UNSPENDABLE_ADDRESS
 from .prepare import ensure_daemons
 
 
@@ -143,9 +144,11 @@ def prepare_run(config, selected):
 
 
 @contextlib.contextmanager
-def _started_node(name, index=0, extra_args=()):
+def _started_node(name, index=0, extra_args=(), **daemon_kwargs):
     datadir = os.path.join(env_data_dir(), "%s%d" % (name, index))
-    node = make_node(name, env_binaries_dir(), datadir, extra_args=extra_args)
+    node = make_node(
+        name, env_binaries_dir(), datadir, extra_args=extra_args, **daemon_kwargs
+    )
     try:
         node.start()
         yield node
@@ -158,8 +161,10 @@ def node():
     """start a plugin node by name; stop it on teardown"""
     opened = []
 
-    def _open(name, extra_args=()):
-        manager = _started_node(name, index=len(opened), extra_args=extra_args)
+    def _open(name, extra_args=(), **daemon_kwargs):
+        manager = _started_node(
+            name, index=len(opened), extra_args=extra_args, **daemon_kwargs
+        )
         started = manager.__enter__()
         opened.append(manager)
         return started
@@ -174,3 +179,15 @@ def node():
 def bitcoind_node(node):
     """A started bitcoind (regtest) node, ready for RPC"""
     return node("bitcoin-core")
+
+
+@pytest.fixture
+def electrs_node(node):
+    """A started electrs node, indexing its own bitcoind (regtest) backend."""
+    # Electrs is a important item on a bitcoin user stack,
+    # given a bitcoin-reference-impl, it indexer helps users
+    # in adopt "specific domain utxo policies" (singlesig, multisig, miniscript).
+    # This one is used when the stack do not support builtin electrs support.
+    backend = node("bitcoin-core", p2p_port=daemon.free_port())
+    backend.client.generate_to_address(1, UNSPENDABLE_ADDRESS)
+    return node("electrs", bitcoind=backend.daemon)

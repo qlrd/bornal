@@ -24,7 +24,7 @@ ENTRY_POINT_GROUP = "bornal.daemons"
 # ``bornal`` stays agnostic: it never imports a compiler directly, it only
 # discovers whatever plugins are installed.
 class Compiler(ABC):
-    """Compiles a bitcoin daemon binary from source (no external client)."""
+    """Compiles a bitcoin daemon binary from source."""
 
     name = ""
     """Plugin related compiler name"""
