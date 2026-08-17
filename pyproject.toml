@@ -13,6 +13,7 @@ bornal = "bornal:main"
 
 [project.entry-points."bornal.daemons"]
 bitcoin-core = "bornal.plugins.bitcoind:CoreCompiler"
+electrs = "bornal.plugins.electrs:ElectrsCompiler"
 
 [project.entry-points.pytest11]
 bornal = "bornal.fixtures"

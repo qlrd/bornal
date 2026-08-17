@@ -49,8 +49,16 @@ class Node:
         return self
 
 
-def make_node(name, binaries_dir, datadir, log=None, extra_args=(), network="regtest"):
-    """Build a ``Node`` for the installed plugin ``name`` (not started)"""
+def make_node(
+    name,
+    binaries_dir,
+    datadir,
+    log=None,
+    extra_args=(),
+    network="regtest",
+    **kwargs,
+):
+    """Build a ``Node`` for the installed plugin ``name`` (not started)."""
     plugin = get(name)
     if plugin.daemon_class is None:
         raise ValueError("plugin '%s' has no daemon to run" % name)
@@ -60,6 +68,7 @@ def make_node(name, binaries_dir, datadir, log=None, extra_args=(), network="reg
         log=log,
         extra_args=extra_args,
         network=network,
+        **kwargs,
     )
     return Node(daemon, log=log)
 

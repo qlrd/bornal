@@ -17,6 +17,8 @@ _REPO = "https://github.com/bitcoin/bitcoin"
 _CMAKE_SINCE_MAJOR = 29
 _BUILD_META = "bitcoind.build.json"
 
+UNSPENDABLE_ADDRESS = "bcrt1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq3xueyj"
+
 
 def _check_compiler():
     if not (shutil.which("gcc") or shutil.which("clang")):
@@ -256,9 +258,18 @@ class BitcoindDaemon(Daemon):
     rpc_user = _NAME.lower()
     rpc_password = _NAME.lower()
 
+    def __init__(self, *args, p2p_port=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._p2p_port = p2p_port
+
     @property
     def binary_name(self) -> str:
         return "bitcoind"
+
+    @property
+    def p2p_port(self):
+        """p2p listen port, or ``None`` when p2p is disabled"""
+        return self._p2p_port
 
     def args(self) -> list:
         argv = [
@@ -267,10 +278,13 @@ class BitcoindDaemon(Daemon):
             "-rpcport=%d" % self.port,
             "-rpcuser=%s" % self.rpc_user,
             "-rpcpassword=%s" % self.rpc_password,
-            "-listen=0",
             "-fallbackfee=0.0002",
             "-server=1",
         ]
+        if self._p2p_port is None:
+            argv.append("-listen=0")
+        else:
+            argv += ["-listen=1", "-bind=%s:%d" % (self.host, self._p2p_port)]
         if self.network != "regtest":
             argv.append("-connect=0")
         return argv
