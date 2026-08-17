@@ -9,7 +9,9 @@ def test_default_options(pytestconfig):
     assert pytestconfig.getoption("bornal_preserve_data") is False
     assert pytestconfig.getoption("bornal_nproc") is None
     assert pytestconfig.getoption("bornal_build_bitcoin_core") is None
+    assert pytestconfig.getoption("bornal_build_electrs") is None
     assert fixtures._build_dest("bitcoin-core") == "bornal_build_bitcoin_core"
+    assert fixtures._build_dest("electrs") == "bornal_build_electrs"
 
 
 def test_latest(prepare_run_minimal):

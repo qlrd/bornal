@@ -15,7 +15,7 @@ from bornal.client import Client
 from bornal.daemon import Daemon
 from bornal.git import Git
 from bornal.paths import Paths
-from bornal.plugins import bitcoind
+from bornal.plugins import bitcoind, electrs
 from bornal.plugins.bitcoind import BitcoindDaemon
 from bornal.node import make_node
 from bornal.testing import COINBASE_MATURITY, COINBASE_SUBSIDY
@@ -197,7 +197,7 @@ class MockedSpyRpc:
 
 
 class MockedSpyBuild:
-    """Spy the bitcoind build shell output"""
+    """Spy the daemon builds' shell output (cmake/make/cargo/go)"""
 
     def __init__(self):
         self.calls = []
@@ -206,9 +206,9 @@ class MockedSpyBuild:
         return iter(self.calls)
 
     @staticmethod
-    def _setup(bindir):
+    def _setup(bindir, binary="bitcoind"):
         os.makedirs(bindir, exist_ok=True)
-        open(os.path.join(bindir, "bitcoind"), "w").close()
+        open(os.path.join(bindir, binary), "w").close()
 
     def run(self, argv, cwd=None):
         self.calls.append(argv)
@@ -216,6 +216,8 @@ class MockedSpyBuild:
             self._setup(os.path.join(argv[2], "bin"))
         elif argv[0] == "make":
             self._setup(os.path.join(cwd, "src"))
+        elif argv[:2] == ["cargo", "build"]:
+            self._setup(os.path.join(cwd, "target", "release"), "electrs")
 
     def clone(self, repo, dest, branch=None, depth=None):
         argv = ["git", "clone"]
@@ -227,6 +229,66 @@ class MockedSpyBuild:
         self.calls.append(argv)
         os.makedirs(dest, exist_ok=True)
         return dest
+
+
+class _MockElectrumSock:
+    """One mocked TCP connection with buffers that spy's reply for reads"""
+
+    def __init__(self, spy):
+        self._spy = spy
+        self._buffer = io.BytesIO()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def sendall(self, data):
+        self._buffer = io.BytesIO(self._spy.respond(data))
+
+    def makefile(self, mode):
+        return self._buffer
+
+
+class MockedSpyElectrumRpc:
+    """Spy Electrum JSON-RPC over a mocked TCP transport."""
+
+    # similar to blockchain, mock electrum standart default responses
+    _RESPONSES = {
+        "server.ping": None,
+        "server.banner": "mocked electrs",
+        "server.version": ["electrs/0.10.10", "1.4"],
+        "blockchain.headers.subscribe": {"height": 0, "hex": "00" * 80},
+        "blockchain.block.header": "00" * 80,
+        "blockchain.estimatefee": 0.0001,
+    }
+
+    def __init__(self, responses=None):
+        self.stored = {**self._RESPONSES, **(responses or {})}
+        self.calls = []
+        self.down = False
+        self.raw_response = None
+
+    def __call__(self, address, timeout=None):
+        if self.down:
+            raise ConnectionRefusedError("mocked down")
+        return _MockElectrumSock(self)
+
+    def respond(self, data):
+        payload = json.loads(data)
+        method = payload["method"]
+        self.calls.append(method)
+        if self.raw_response is not None:
+            return self.raw_response
+        if method in self.stored:
+            body = {"id": payload["id"], "result": self.stored[method]}
+        else:
+            body = {
+                "id": payload["id"],
+                "error": {"code": -32601, "message": "unknown method"},
+            }
+        return json.dumps(body).encode() + b"\n"
 
 
 class MockPytestConfig:
@@ -285,10 +347,10 @@ def spy_popen(monkeypatch):
 
 @pytest.fixture
 def spy_build(monkeypatch):
-    """Spy the bitcoind build: the real ``CoreCompiler.ensure`` runs (revision
-    parsing, cmake/autotools dispatch, binary copy), but the shell-out boundary
-    is intercepted by ``MockedSpyBuild`` and host/network lookups are stubbed.
-    """
+    """Spy the daemon builds"""
+    # the real ``ensure`` methods run (revision parsing, build dispatch,
+    # binary copy), but the shell-out boundary is intercepted by
+    # ``MockedSpyBuild`` and host/network lookups are stubbed.
     spy = MockedSpyBuild()
     monkeypatch.setattr(bitcoind, "_on_path", lambda: None)
     monkeypatch.setattr(bitcoind, "_check_compiler", lambda: None)
@@ -296,6 +358,18 @@ def spy_build(monkeypatch):
     monkeypatch.setattr(bitcoind, "_run", spy.run)
     monkeypatch.setattr(bitcoind.Git, "clone", staticmethod(spy.clone))
     monkeypatch.setattr(bitcoind, "_latest_revision", lambda: "30.2")
+    monkeypatch.setattr(electrs, "_on_path", lambda: None)
+    monkeypatch.setattr(electrs, "check_installed", lambda *a: None)
+    monkeypatch.setattr(electrs, "_run", spy.run)
+    monkeypatch.setattr(electrs, "_latest_revision", lambda: "0.10.10")
+    return spy
+
+
+@pytest.fixture
+def spy_electrum(monkeypatch):
+    """Spy the Electrum TCP transport so electrs client tests can assert calls"""
+    spy = MockedSpyElectrumRpc()
+    monkeypatch.setattr("socket.create_connection", spy)
     return spy
 
 
@@ -329,6 +403,64 @@ def mocked_client_noauth(mocked_daemon, spy_popen, mocked_rpc):
         yield client
     finally:
         mocked_daemon.stop()
+
+
+@pytest.fixture
+def mock_bitcoind_cache(paths):
+    """Pre-populate ``binaries_dir`` with a fake compiled bitcoind"""
+
+    def _wrap(revision=None, wallet=True):
+        os.makedirs(paths.binaries_dir, exist_ok=True)
+        dest = os.path.join(paths.binaries_dir, "bitcoind")
+        with open(dest, "w") as handle:
+            handle.write("cached")
+        if revision is not None:
+            bitcoind._write_build_meta(
+                paths.binaries_dir, {"revision": revision, "wallet": wallet}
+            )
+        return dest
+
+    return _wrap
+
+
+@pytest.fixture
+def mock_bitcoind_bin_path(monkeypatch, tmp_path):
+    """Put a fake bitcoind 'on PATH' via the ``_on_path`` seam"""
+
+    def _wrap(p):
+        binary = tmp_path / p / "bitcoind"
+        binary.parent.mkdir()
+        binary.write_text("mockuo")
+        monkeypatch.setattr(bitcoind, "_on_path", lambda: str(binary))
+        return binary
+
+    return _wrap
+
+
+@pytest.fixture
+def electrs_compiler():
+    """The electrs compiler plugin"""
+    return electrs.ElectrsCompiler()
+
+
+@pytest.fixture
+def backend_daemon(tmp_path):
+    """A p2p-enabled bitcoind daemon for electrs to ride on but not started"""
+    return BitcoindDaemon("/bin", str(tmp_path / "b"), port=18443, p2p_port=18444)
+
+
+@pytest.fixture
+def electrs_daemon(tmp_path, backend_daemon):
+    """An electrs daemon wired to ``backend_daemon`` but not started"""
+    return electrs.ElectrsDaemon(
+        "/bin", str(tmp_path / "e"), port=50001, bitcoind=backend_daemon
+    )
+
+
+@pytest.fixture
+def electrs_client(spy_electrum):
+    """An ``ElectrsClient`` over the mocked Electrum TCP transport"""
+    return electrs.ElectrsClient(host="127.0.0.1", port=50001)
 
 
 @pytest.fixture
