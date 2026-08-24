@@ -4,7 +4,7 @@ import pytest
 
 from bornal import daemon
 from bornal.client import ClientError
-from bornal.node import make_node
+from bornal.node import make_backend
 from bornal.plugins import electrs
 from bornal.plugins.bitcoind import BitcoindDaemon
 from bornal.plugins.electrs import ElectrsClient, ElectrsCompiler, ElectrsDaemon
@@ -152,8 +152,8 @@ def test_invalid_response(electrs_client, spy_electrum):
 
 
 def test_make_node_electrs(spy_popen, spy_electrum, tmp_path):
-    backend = make_node("bitcoin-core", "/bin", str(tmp_path / "b"), p2p_port=18444)
-    node = make_node("electrs", "/bin", str(tmp_path / "e"), bitcoind=backend.daemon)
+    backend = make_backend("bitcoin-core", "/bin", str(tmp_path / "b"), p2p_port=18444)
+    node = make_backend("electrs", "/bin", str(tmp_path / "e"), bitcoind=backend.daemon)
     assert isinstance(node.daemon, ElectrsDaemon)
     assert isinstance(node.client, ElectrsClient)
     node.start()

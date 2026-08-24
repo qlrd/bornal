@@ -7,10 +7,10 @@ from .logger import LOG
 
 __all__ = [
     "IntegrationTest",
-    "Node",
+    "Backend",
     "env_binaries_dir",
     "env_data_dir",
-    "make_node",
+    "make_backend",
 ]
 
 
@@ -26,7 +26,7 @@ def env_data_dir():
     return os.path.join(os.environ["INTEGRATION_TEMP_DIR"], "data")
 
 
-class Node:
+class Backend:
     """A ``Daemon`` plus the ``Client`` to talk to it"""
 
     def __init__(self, daemon, client=None, log=None):
@@ -37,7 +37,9 @@ class Node:
     def start(self):
         self.daemon.start()
         self.client.wait_until_up()
-        self._log.debug("node '%s' up at %s", self.daemon.binary_name, self.client.url)
+        self._log.debug(
+            "backend '%s' up at %s", self.daemon.binary_name, self.client.url
+        )
         return self
 
     def stop(self):
@@ -49,7 +51,7 @@ class Node:
         return self
 
 
-def make_node(
+def make_backend(
     name,
     binaries_dir,
     datadir,
@@ -58,7 +60,7 @@ def make_node(
     network="regtest",
     **kwargs,
 ):
-    """Build a ``Node`` for the installed plugin ``name`` (not started)."""
+    """Build a ``Backend`` for the installed plugin ``name`` (not started)."""
     plugin = get(name)
     if plugin.daemon_class is None:
         raise ValueError("plugin '%s' has no daemon to run" % name)
@@ -70,17 +72,21 @@ def make_node(
         network=network,
         **kwargs,
     )
-    return Node(daemon, log=log)
+    return Backend(daemon, log=log)
 
 
 class IntegrationTest(ABC):
     """Reusable ABC for an bornal integration test.
 
-    - implement ``set_test_params()`` — declare nodes via ``self.add_node(name)``;
-    - implement ``run_test()`` — assert against ``self.nodes`` (already started).
+    - implement ``set_test_params()`` — declare backends via ``self.add_backend(name)``;
+    - implement ``run_test()`` — assert against ``self.backends`` (already started).
 
-    ``main()`` drives the lifecycle: set params -> start nodes -> run_test ->
-    stop (every node is stopped, even on failure).
+    ``main()`` lifecycle:
+
+    - set params
+    - start backends
+    - run_test
+    - stop (every backend is stopped, even on failure).
     """
 
     def __init__(self, binaries_dir=None, data_dir=None, log=None):
@@ -88,40 +94,40 @@ class IntegrationTest(ABC):
         self._data_dir = data_dir or env_data_dir()
         self._log = log or LOG
         self._declared = []
-        self.nodes = []
+        self.backends = []
 
     @property
     def log(self):
         return self._log
 
-    def add_node(self, name, extra_args=()):
-        """Declare a node to start"""
+    def add_backend(self, name, extra_args=()):
+        """Declare a backend to start"""
         self._declared.append((name, list(extra_args)))
 
     @abstractmethod
     def set_test_params(self):
-        """Declare the nodes for this test"""
+        """Declare the backends for this test"""
 
     @abstractmethod
     def run_test(self):
-        """Run assertions against ``self.nodes``"""
+        """Run assertions against ``self.backends``"""
 
-    def setup_nodes(self):
-        """Start every declared node and expose them as ``self.nodes``."""
+    def setup_backends(self):
+        """Start every declared backend and expose them as ``self.backends``."""
         for index, (name, extra_args) in enumerate(self._declared):
             datadir = os.path.join(self._data_dir, "%s%d" % (name, index))
-            node = make_node(
+            node = make_backend(
                 name, self._binaries_dir, datadir, log=self._log, extra_args=extra_args
             )
             node.start()
-            self.nodes.append(node)
+            self.backends.append(node)
 
     def main(self):
-        """set params / start nodes / run_test / stop"""
+        """set params / start backends / run_test / stop"""
         self.set_test_params()
-        self.setup_nodes()
+        self.setup_backends()
         try:
             self.run_test()
         finally:
-            for node in self.nodes:
+            for node in self.backends:
                 node.stop()

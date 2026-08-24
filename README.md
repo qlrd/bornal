@@ -97,8 +97,8 @@ a pytest plugin and its fixtures are available on `pytest` runtime:
 from bornal.testing import assert_wallet_roundtrip
 
 
-def test_wallet(bitcoind_node):
-    assert_wallet_roundtrip(bitcoind_node)
+def test_wallet(bitcoin_backend):
+    assert_wallet_roundtrip(bitcoin_backend)
 ```
 
 Or subclass the `IntegrationTest` (an `ABC` derived class), which mirrors
@@ -111,10 +111,10 @@ from bornal.node import IntegrationTest
 
 class MyTest(IntegrationTest):
     def set_test_params(self):
-        self.add_node("bitcoin-core")
+        self.add_backend("bitcoin-core")
 
     def run_test(self):
-        assert self.nodes[0].client.get_block_count() == 0
+        assert self.backends[0].client.get_block_count() == 0
 ```
 
 ## Plugins

@@ -21,17 +21,17 @@ def setup_error(setup, monkeypatch):
     monkeypatch.setattr(Client, "wait_until_up", never_up)
 
 
-def test_started_node_runs_and_stops_real_node(setup, spy_popen, spy_rpc):
-    with fixtures._started_node("bitcoin-core") as node:
+def test_started_backend_runs_and_stops_real_node(setup, spy_popen, spy_rpc):
+    with fixtures._started_backend("bitcoin-core") as node:
         assert node.client.get_block_count() == 0
         assert spy_popen.processes[0].argv[0].endswith("/bitcoind")
 
     assert spy_popen.processes[0].terminated
 
 
-def test_started_node_stops_on_exception(setup, spy_popen, spy_rpc):
+def test_started_backend_stops_on_exception(setup, spy_popen, spy_rpc):
     try:
-        with fixtures._started_node("bitcoin-core"):
+        with fixtures._started_backend("bitcoin-core"):
             raise RuntimeError("boom")
     except RuntimeError:
         pass
@@ -43,14 +43,14 @@ def test_started_node_stops_when_rpc_never_comes_up(setup_error, spy_popen):
     from bornal.client import ClientError
 
     with pytest.raises(ClientError):
-        with fixtures._started_node("bitcoin-core"):
+        with fixtures._started_backend("bitcoin-core"):
             pass
 
     assert spy_popen.processes
     assert spy_popen.processes[0].terminated
 
 
-def test_node_factory_fixture_opens_real_node(setup, node, spy_popen, spy_rpc):
-    opened = node("bitcoin-core")
+def test_node_factory_fixture_opens_real_node(setup, backend, spy_popen, spy_rpc):
+    opened = backend("bitcoin-core")
     assert opened.client.get_block_count() == 0
     assert spy_popen.processes

@@ -1,7 +1,6 @@
 """Example bornal integration test: a bitcoin-core wallet roundtrip.
 
 - ``BitcoindWalletTest`` — the reusable ``IntegrationTest`` ABC;
-- ``test_bitcoind_wallet_via_fixture`` — the ``bitcoind_node`` fixture.
 
 Run it through the bornal pytest plugin, which builds bitcoind on demand and
 exports ``INTEGRATION_TEMP_DIR``.
@@ -20,10 +19,10 @@ class BitcoindWalletTest(IntegrationTest):
     """Mine to a fresh wallet and assert the matured balance + UTXOs."""
 
     def set_test_params(self):
-        self.add_node("bitcoin-core")
+        self.add_backend("bitcoin-core")
 
     def run_test(self):
-        assert_wallet_roundtrip(self.nodes[0], 0)
+        assert_wallet_roundtrip(self.backends[0])
         self.log.info("wallet roundtrip OK")
 
 
