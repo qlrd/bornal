@@ -12,8 +12,8 @@ def test_create_default(integrate):
     dest = integrate("test_bitcoin_core.py")
     assert os.path.exists(dest)
     body = open(dest).read()
-    assert "def test_bitcoin_core(node):" in body
-    assert 'node("bitcoin-core")' in body
+    assert "def test_bitcoin_core(backend):" in body
+    assert 'backend("bitcoin-core")' in body
 
 
 def test_create_and_run(integrate):
@@ -29,7 +29,7 @@ def test_create_scaffold(integrate):
 
     body = open(dest).read()
     print(body)
-    assert "def test_myfeat(node):" in body
+    assert "def test_myfeat(backend):" in body
     assert "assert client.get_blockchain_info()" in body
     # a second run without --force
     with pytest.raises(SystemExit):
@@ -44,7 +44,7 @@ def test_create_custom_default(integrate):
     dest = integrate("test_simple_test.py", "simple-test")
     assert os.path.exists(dest)
     body = open(dest).read()
-    assert "def test_simple_test(node):" in body
+    assert "def test_simple_test(backend):" in body
     ast.parse(body)
 
 
@@ -64,7 +64,7 @@ def test_create_wallet_roundtrip_template(integrate):
     dest = integrate("test_bitcoin_core.py", "--template", "wallet-roundtrip")
     body = open(dest).read()
     assert "from bornal.testing import assert_wallet_roundtrip" in body
-    assert 'assert_wallet_roundtrip(node("bitcoin-core"))' in body
+    assert 'assert_wallet_roundtrip(backend("bitcoin-core"))' in body
     assert "pytest --build-bitcoin latest --wallet" in body
 
 

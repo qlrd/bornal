@@ -40,9 +40,9 @@ Build the daemon and run this test with the bornal's ``pytest`` plugin::
 
 # Default body: start a regtest node and assert a clean chain.
 _TEST_BODY = '''\
-def {func}(node):
+def {func}(backend):
     """Start a regtest node and assert a clean chain."""
-    client = node("{daemon}").client
+    client = backend("{daemon}").client
     assert client.get_blockchain_info()["chain"] == "regtest"
     assert client.get_block_count() == 0
 '''
@@ -51,10 +51,10 @@ _WALLET_BODY = '''\
 from bornal.testing import assert_wallet_roundtrip
 
 
-def {func}(node):
+def {func}(backend):
     """Mine to a fresh wallet and assert the matured balance + UTXOs."""
     # on-demand mining works on regtest only
-    assert_wallet_roundtrip(node("{daemon}"))
+    assert_wallet_roundtrip(backend("{daemon}"))
 '''
 
 TEMPLATES = {

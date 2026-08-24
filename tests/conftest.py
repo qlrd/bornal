@@ -17,8 +17,8 @@ from bornal.git import Git
 from bornal.paths import Paths
 from bornal.plugins import bitcoind, electrs
 from bornal.plugins.bitcoind import BitcoindDaemon
-from bornal.node import make_node
-from bornal.testing import COINBASE_MATURITY, COINBASE_SUBSIDY
+from bornal.node import make_backend
+from bornal.testing import COINBASE_MATURITY, BASE_COINBASE_SUBSIDY
 from bornal import fixtures
 from bornal import main
 
@@ -141,7 +141,7 @@ class MockedSpyRpc:
     def _list_unspent(self):
         if self.height <= COINBASE_MATURITY:
             return []
-        return [{"address": self._mined_to, "amount": COINBASE_SUBSIDY}]
+        return [{"address": self._mined_to, "amount": BASE_COINBASE_SUBSIDY}]
 
     @property
     def req(self):
@@ -182,7 +182,7 @@ class MockedSpyRpc:
             body = {"result": self._new_address(), "error": None}
         elif method == "getbalance":
             matured = self.height > COINBASE_MATURITY
-            body = {"result": COINBASE_SUBSIDY if matured else 0, "error": None}
+            body = {"result": BASE_COINBASE_SUBSIDY if matured else 0, "error": None}
         elif method == "listunspent":
             body = {"result": self._list_unspent(), "error": None}
         else:
@@ -541,9 +541,9 @@ def prepare_run_minimal(monkeypatch, pytestconfig_minimal):
 
 
 @pytest.fixture
-def run_daemon(tmp_path):
+def run_backend(tmp_path):
     def _wrap(name):
-        node = make_node(name, "/bin", str(tmp_path))
+        node = make_backend(name, "/bin", str(tmp_path))
         node.start()
         return node
 
