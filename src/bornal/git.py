@@ -1,4 +1,5 @@
 import os
+import re
 from subprocess import Popen, PIPE
 
 from .logger import LOG, fail
@@ -79,7 +80,7 @@ class Git:
         for line in self._run("log", oneline=oneline, L=L).splitlines():
             if not line:
                 continue
-            if L and (line.startswith("diff ") or line[:1] in " +-@"):
+            if L and commits and not re.match(r"[0-9a-f]{7,40} ", line):
                 commits[-1]["diff"].append(line)
                 continue
             commit, _, message = line.partition(" ")
