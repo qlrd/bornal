@@ -210,7 +210,7 @@ class MockedSpyBuild:
         os.makedirs(bindir, exist_ok=True)
         open(os.path.join(bindir, binary), "w").close()
 
-    def run(self, argv, cwd=None):
+    def run(self, argv, cwd=None, env=None):
         self.calls.append(argv)
         if argv[:2] == ["cmake", "--build"]:
             self._setup(os.path.join(argv[2], "bin"))

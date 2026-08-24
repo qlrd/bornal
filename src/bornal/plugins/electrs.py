@@ -40,9 +40,15 @@ def _resolve_revision(rev):
     return rev
 
 
-def _run(argv, cwd=None):
+def _build_env():
+    env = os.environ.copy()
+    env["CXXFLAGS"] = ("%s -include cstdint" % env.get("CXXFLAGS", "")).strip()
+    return env
+
+
+def _run(argv, cwd=None, env=None):
     LOG.debug("$ %s", " ".join(argv))
-    if subprocess.run(argv, cwd=cwd).returncode != 0:
+    if subprocess.run(argv, cwd=cwd, env=env).returncode != 0:
         fail("command failed: %s", " ".join(argv))
 
 
@@ -105,7 +111,7 @@ class ElectrsCompiler(Compiler):
             Git.clone(_REPO, src, branch=_ref(revision), depth=1)
 
             LOG.info("building %s", _NAME)
-            _run(["cargo", "build", "--locked", "--release"], cwd=src)
+            _run(["cargo", "build", "--locked", "--release"], cwd=src, env=_build_env())
 
             out = os.path.join(paths.binaries_dir, "electrs")
             shutil.copy(os.path.join(src, "target", "release", "electrs"), out)
