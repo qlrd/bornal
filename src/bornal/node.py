@@ -1,12 +1,14 @@
 import os
+import sys
 from abc import ABC, abstractmethod
 
-from .client import ClientError
-from .daemon import get
+from .client import Client, ClientError
+from .daemon import get, Daemon
 from .logger import LOG
 
 __all__ = [
     "IntegrationTest",
+    "BackendError",
     "Backend",
     "env_binaries_dir",
     "env_data_dir",
@@ -26,12 +28,17 @@ def env_data_dir():
     return os.path.join(os.environ["INTEGRATION_TEMP_DIR"], "data")
 
 
+class BackendError(ExceptionGroup):
+    def derive(self, excs):
+        return BackendError(self.message, excs)
+
+
 class Backend:
     """A ``Daemon`` plus the ``Client`` to talk to it"""
 
     def __init__(self, daemon, client=None, log=None):
-        self.daemon = daemon
-        self.client = client or daemon.make_client()
+        self.daemon: Daemon = daemon
+        self.client: Client = client or daemon.make_client()
         self._log = log or LOG
 
     def start(self):
@@ -52,13 +59,7 @@ class Backend:
 
 
 def make_backend(
-    name,
-    binaries_dir,
-    datadir,
-    log=None,
-    extra_args=(),
-    network="regtest",
-    **kwargs,
+    name, binaries_dir, datadir, log=None, extra_args=(), network="regtest", **kwargs
 ):
     """Build a ``Backend`` for the installed plugin ``name`` (not started)."""
     plugin = get(name)
@@ -94,15 +95,18 @@ class IntegrationTest(ABC):
         self._data_dir = data_dir or env_data_dir()
         self._log = log or LOG
         self._declared = []
-        self.backends = []
+        self.backends: list[Backend] = []
 
     @property
     def log(self):
         return self._log
 
-    def add_backend(self, name, extra_args=()):
-        """Declare a backend to start"""
-        self._declared.append((name, list(extra_args)))
+    def add_backend(self, name, extra_args=(), **daemon_kwargs):
+        """Declare a backend to start, ``extra_args`` is the raw argv and ``daemon_args``
+        for the plugins (e.g., p2p_port for bitcoind, bitcoind for electrs, etc.)
+        added with some default one (see ``bornal.daemon``, ``bornal.plugins.bitcoind``
+        and ``bornal.plugins.electrs``"""
+        self._declared.append((name, {"extra_args": list(extra_args), **daemon_kwargs}))
 
     @abstractmethod
     def set_test_params(self):
@@ -114,13 +118,31 @@ class IntegrationTest(ABC):
 
     def setup_backends(self):
         """Start every declared backend and expose them as ``self.backends``."""
-        for index, (name, extra_args) in enumerate(self._declared):
+        for index, (name, kwargs) in enumerate(self._declared):
             datadir = os.path.join(self._data_dir, "%s%d" % (name, index))
             node = make_backend(
-                name, self._binaries_dir, datadir, log=self._log, extra_args=extra_args
+                name, self._binaries_dir, datadir, log=self._log, **kwargs
             )
             node.start()
             self.backends.append(node)
+
+    def stop_backends(self):
+        """Stop every backend (lifo), then raise one ``BackendError`` grouping
+        every failure"""
+        errors: list[Exception] = []
+        lifo = reversed(self.backends)
+        for node in lifo:
+            try:
+                node.stop()
+            except Exception as exc:
+                exc.add_note(
+                    f"while stopping {node.daemon.binary_name} at {node.client.url}: "
+                    f"see {node.daemon.datadir}"
+                )
+                errors.append(exc)
+        self.backends = []
+        if errors:
+            raise BackendError(f"{len(errors)} backend(s) failed to stop", errors)
 
     def main(self):
         """set params / start backends / run_test / stop"""
@@ -129,5 +151,4 @@ class IntegrationTest(ABC):
         try:
             self.run_test()
         finally:
-            for node in self.backends:
-                node.stop()
+            self.stop_backends()

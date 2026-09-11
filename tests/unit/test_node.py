@@ -63,13 +63,44 @@ def test_integration_success(spy_popen, spy_rpc, tmp_path):
 
 
 def test_integration_fail(spy_popen, spy_rpc, tmp_path):
-    class MockTest(IntegrationTest):
+
+    class MockTestA(IntegrationTest):
+        pass
+
+    class MockTestB(IntegrationTest):
+        def set_test_params(self):
+            self.add_backend("bitcoin-core")
+
+    class MockTestC(IntegrationTest):
+        def run_test(self):
+            raise ValueError("mocked")
+
+    class MockTestD(IntegrationTest):
         def set_test_params(self):
             self.add_backend("bitcoin-core")
 
         def run_test(self):
             raise ValueError("mocked")
 
+    class MockTestE(IntegrationTest):
+        def set_test_params(self):
+            raise ValueError("mocked")
+
+        def run_test(self):
+            pass
+
+    with pytest.raises(TypeError, match="Can't instantiate"):
+        MockTestA("/bin", str(tmp_path)).main()
+
+    with pytest.raises(TypeError, match="Can't instantiate"):
+        MockTestB("/bin", str(tmp_path)).main()
+
+    with pytest.raises(TypeError, match="Can't instantiate"):
+        MockTestC("/bin", str(tmp_path)).main()
+
     with pytest.raises(ValueError, match="mocked"):
-        MockTest("/bin", str(tmp_path)).main()
+        MockTestD("/bin", str(tmp_path)).main()
+
+    with pytest.raises(ValueError, match="mocked"):
+        MockTestE("/bin", str(tmp_path)).main()
     assert spy_popen.processes[0].terminated
