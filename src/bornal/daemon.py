@@ -1,23 +1,48 @@
 import os
+import json
 import socket
 import subprocess
+import shutil
 from abc import ABC, abstractmethod
 from importlib.metadata import entry_points
 
+from .git import Git
 from .logger import LOG, fail
 
 __all__ = [
     "Compiler",
+    "CompilerError",
     "Daemon",
     "ENTRY_POINT_GROUP",
+    "abort",
     "build_flag_for",
     "free_port",
     "get",
     "names",
     "registry",
+    "run",
 ]
 
 ENTRY_POINT_GROUP = "bornal.daemons"
+
+
+class CompilerError(ExceptionGroup):
+    def derive(self, excs):
+        return CompilerError(self.message, excs)
+
+
+def run(argv, cwd=None, env=None):
+    LOG.debug("$ %s", " ".join(argv))
+    process = subprocess.run(argv, cwd=cwd, env=env)
+    if process.returncode != 0:
+        message = f"command '{' '.join(argv)}' exited with code {process.returncode}"
+        raise CompilerError("Failed to compile", [Exception(message)])
+
+
+def abort(exc):
+    for cause in exc.exceptions:
+        LOG.error(cause)
+    fail(exc.message)
 
 
 # Plugins subclass this and register via the ``bornal.daemons`` entry-point.
@@ -38,17 +63,101 @@ class Compiler(ABC):
     when left ``None`` it is derived as ``--build-<name>`` (see ``build_flag_for``).
     """
 
+    repo = None
+    """Some given abstract project to be compiled."""
+
+    binary_name = None
+    """Some given binary that the project compiles to."""
+
+    build_meta = None
+    """Metadata for built cache"""
+
     @abstractmethod
     # Extra ``options`` are compiler-specific; ignore the ones you don't know
     # (accept ``**_``)
     def ensure(self, paths, *, force=False, **options) -> str:
         """Make the compiled binary available under ``paths.binaries_dir``."""
 
-    # This is the project's discovery in some``tests/integration`` (and
-    # the framework it uses) read these to locate the binaries.
+    @staticmethod
+    def git_ref(rev):
+        return f"v{rev}" if rev[:1].isdigit() else rev
+
+    def _depends_on(self, attr):
+        val = getattr(self, attr)
+        if val is None:
+            raise AttributeError(f"'{attr}' not set on {type(self).__name__}")
+        return val
+
+    def check_compiler(self, *build_deps):
+        """Check if build deps are correct before build."""
+        if any(shutil.which(dep) for dep in build_deps):
+            return
+        causes = [Exception(f"'{dep}' not found on PATH'") for dep in build_deps]
+        msg = f"{self.name} needs at least on of: " + ", ".join(build_deps)
+        raise CompilerError(msg, causes)
+
     def env(self, paths):
         """Env vars this compiler contributes to the test run (name -> value)."""
-        return {}
+        if self.binary_name is None:
+            raise ValueError(f"Binary name is not on {type(self).__name__}")
+        binary_key = self.binary_name.upper()
+        binary_val = self.dest(paths)
+        prefix = self.name.upper().replace("-", "_")
+
+        # derive envs by name like
+        # <BINARY_NAME> will be under ``paths.binaries_dir``
+        # <NAME>_PATH will be ``paths.binaries_dir``
+        return {
+            binary_key: binary_val,
+            f"{prefix}_PATH": paths.binaries_dir,
+        }
+
+    def dest(self, paths) -> str:
+        return os.path.join(paths.binaries_dir, self._depends_on("binary_name"))
+
+    def on_path(self):
+        if self.binary_name is None:
+            raise ValueError(f"Binary name is not on '{type(self).__name__}'")
+        return shutil.which(self._depends_on("binary_name"))
+
+    def install(self, paths, built):
+        """Copy compiled into cached daemons"""
+        os.makedirs(paths.binaries_dir, exist_ok=True)
+        output = self.dest(paths)
+        shutil.copy(built, output)
+        os.chmod(output, 0o755)
+
+    def get_latest_revision(self):
+        versions = []
+        for tag in Git.ls_remote_tags(self.repo, "v[0-9]*"):
+            parts = tag.lstrip("v").split(".")
+            if parts and all(p.isdigit() for p in parts):
+                versions.append(tuple(int(p) for p in parts))
+        if not versions:
+            fail("unable to determine 'latest' for %s", self.name)
+        return ".".join(str(p) for p in max(versions))
+
+    def resolve_revision(self, rev):
+        if rev in (None, "", "latest"):
+            return self.get_latest_revision()
+        return rev
+
+    def build_meta_path(self, paths):
+        return os.path.join(paths.binaries_dir, self._depends_on("build_meta"))
+
+    def read_build_meta(self, paths):
+        """How the cached bitcoind was built, or ``None`` if unknown/missing."""
+        try:
+            with open(self.build_meta_path(paths)) as f:
+                return json.load(f)
+
+        except (OSError, ValueError):
+            return None
+
+    def write_build_meta(self, paths, meta):
+        """Record how the cached bitcoind was built"""
+        with open(self.build_meta_path(paths), "w") as f:
+            json.dump(meta, f)
 
 
 def free_port():

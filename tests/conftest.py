@@ -352,16 +352,21 @@ def spy_build(monkeypatch):
     # binary copy), but the shell-out boundary is intercepted by
     # ``MockedSpyBuild`` and host/network lookups are stubbed.
     spy = MockedSpyBuild()
-    monkeypatch.setattr(bitcoind, "_on_path", lambda: None)
-    monkeypatch.setattr(bitcoind, "_check_compiler", lambda: None)
+    monkeypatch.setattr(bitcoind.CoreCompiler, "on_path", lambda self: None)
+    monkeypatch.setattr(bitcoind.CoreCompiler, "check_compiler", lambda self, *a: None)
     monkeypatch.setattr(bitcoind, "check_installed", lambda *a: None)
-    monkeypatch.setattr(bitcoind, "_run", spy.run)
+    monkeypatch.setattr(bitcoind, "run", spy.run)
     monkeypatch.setattr(bitcoind.Git, "clone", staticmethod(spy.clone))
-    monkeypatch.setattr(bitcoind, "_latest_revision", lambda: "30.2")
-    monkeypatch.setattr(electrs, "_on_path", lambda: None)
+    monkeypatch.setattr(
+        bitcoind.CoreCompiler, "get_latest_revision", lambda self: "30.2"
+    )
+    monkeypatch.setattr(electrs.ElectrsCompiler, "check_compiler", lambda self: None)
+    monkeypatch.setattr(electrs.ElectrsCompiler, "on_path", lambda self: None)
     monkeypatch.setattr(electrs, "check_installed", lambda *a: None)
-    monkeypatch.setattr(electrs, "_run", spy.run)
-    monkeypatch.setattr(electrs, "_latest_revision", lambda: "0.10.10")
+    monkeypatch.setattr(electrs, "run", spy.run)
+    monkeypatch.setattr(
+        electrs.ElectrsCompiler, "get_latest_revision", lambda self: "0.10.10"
+    )
     return spy
 
 
@@ -415,8 +420,8 @@ def mock_bitcoind_cache(paths):
         with open(dest, "w") as handle:
             handle.write("cached")
         if revision is not None:
-            bitcoind._write_build_meta(
-                paths.binaries_dir, {"revision": revision, "wallet": wallet}
+            bitcoind.CoreCompiler().write_build_meta(
+                paths, {"revision": revision, "wallet": wallet}
             )
         return dest
 
@@ -431,7 +436,7 @@ def mock_bitcoind_bin_path(monkeypatch, tmp_path):
         binary = tmp_path / p / "bitcoind"
         binary.parent.mkdir()
         binary.write_text("mockuo")
-        monkeypatch.setattr(bitcoind, "_on_path", lambda: str(binary))
+        monkeypatch.setattr(bitcoind.CoreCompiler, "on_path", lambda self: str(binary))
         return binary
 
     return _wrap

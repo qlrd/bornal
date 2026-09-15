@@ -1,5 +1,4 @@
 import os
-import sys
 from abc import ABC, abstractmethod
 
 from .client import Client, ClientError

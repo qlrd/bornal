@@ -1,15 +1,13 @@
 import json
 import os
-import shutil
 import socket
-import subprocess
 import tempfile
 
 from ..client import Client, ClientError
-from ..daemon import Compiler, Daemon, free_port
+from ..daemon import Compiler, CompilerError, Daemon, abort, free_port, run
 from ..deps import check_installed
 from ..git import Git
-from ..logger import LOG, fail
+from ..logger import LOG
 
 __all__ = ["ElectrsClient", "ElectrsCompiler", "ElectrsDaemon"]
 
@@ -19,117 +17,64 @@ _BUILD_META = "electrs.build.json"
 _CONF_NAME = "electrs.toml"
 
 
-def _ref(rev):
-    return "v%s" % rev if rev[:1].isdigit() else rev
-
-
-def _latest_revision():
-    versions = []
-    for tag in Git.ls_remote_tags(_REPO, "v[0-9]*"):
-        parts = tag.lstrip("v").split(".")
-        if parts and all(p.isdigit() for p in parts):
-            versions.append(tuple(int(p) for p in parts))
-    if not versions:
-        fail("unable to determine 'latest' for %s", _NAME)
-    return ".".join(str(p) for p in max(versions))
-
-
-def _resolve_revision(rev):
-    if rev in (None, "latest"):
-        return _latest_revision()
-    return rev
-
-
 def _build_env():
     env = os.environ.copy()
     env["CXXFLAGS"] = ("%s -include cstdint" % env.get("CXXFLAGS", "")).strip()
     return env
 
 
-def _run(argv, cwd=None, env=None):
-    LOG.debug("$ %s", " ".join(argv))
-    if subprocess.run(argv, cwd=cwd, env=env).returncode != 0:
-        fail("command failed: %s", " ".join(argv))
-
-
-def _on_path():
-    return shutil.which("electrs")
-
-
-def _adopt(binaries_dir, electrs):
-    os.makedirs(binaries_dir, exist_ok=True)
-    out = os.path.join(binaries_dir, "electrs")
-    shutil.copy(electrs, out)
-    os.chmod(out, 0o755)
-
-
-def _read_build_meta(binaries_dir):
-    """How the cached electrs was built, or ``None`` if unknown or missing."""
-    try:
-        with open(os.path.join(binaries_dir, _BUILD_META)) as handle:
-            return json.load(handle)
-    except (OSError, ValueError):
-        return None
-
-
-def _write_build_meta(binaries_dir, meta):
-    """Remember how the cached electrs was built"""
-    with open(os.path.join(binaries_dir, _BUILD_META), "w") as handle:
-        json.dump(meta, handle)
-
-
 class ElectrsCompiler(Compiler):
     """Builds electrs with cargo. ``--nproc`` is ignored."""
 
     name = _NAME
+    repo = _REPO
+    binary_name = _NAME
+    build_meta = _BUILD_META
 
     def ensure(self, paths, *args, force=False, revision=None, **kwargs) -> str:
-        dest = os.path.join(paths.binaries_dir, "electrs")
+        dest = self.dest(paths)
         wanted = {"revision": revision or "latest"}
         wants_specific = revision is not None
 
         if os.path.exists(dest) and not force:
-            if not wants_specific or _read_build_meta(paths.binaries_dir) == wanted:
+            if not wants_specific or self.read_build_meta(paths) == wanted:
                 LOG.info("%s matching build, skip it", self.name)
                 return dest
             LOG.info("%s rebuilding", self.name)
         elif not (force or wants_specific):
-            found = _on_path()
+            found = self.on_path()
             if found:
                 LOG.info("electrs on PATH: %s", found)
-                _adopt(paths.binaries_dir, found)
-                _write_build_meta(paths.binaries_dir, {"revision": "path"})
+                self.install(paths, found)
+                self.write_build_meta(paths, {"revision": "path"})
                 return dest
 
         check_installed("git", "cargo", "clang")
-        revision = _resolve_revision(revision)
+        revision = self.resolve_revision(revision)
 
-        with tempfile.TemporaryDirectory() as workdir:
-            src = os.path.join(workdir, "electrs")
+        try:
+            with tempfile.TemporaryDirectory() as workdir:
+                src = os.path.join(workdir, "electrs")
 
-            LOG.info("cloning %s %s", self.name, _ref(revision))
-            Git.clone(_REPO, src, branch=_ref(revision), depth=1)
+                LOG.info(f"cloning {self.name} {self.git_ref(revision)}")
+                Git.clone(_REPO, src, branch=self.git_ref(revision), depth=1)
 
-            LOG.info("building %s", _NAME)
-            _run(["cargo", "build", "--locked", "--release"], cwd=src, env=_build_env())
+                LOG.info(f"building {self.name}")
+                run(
+                    ["cargo", "build", "--locked", "--release"],
+                    cwd=src,
+                    env=_build_env(),
+                )
 
-            out = os.path.join(paths.binaries_dir, "electrs")
-            shutil.copy(os.path.join(src, "target", "release", "electrs"), out)
-            os.chmod(out, 0o755)
-
-        _write_build_meta(paths.binaries_dir, wanted)
-        LOG.info("%s built at %s", self.name, paths.binaries_dir)
+                self.install(paths, os.path.join(src, "target", "release", "electrs"))
+        except CompilerError as exc:
+            abort(exc)
+        self.write_build_meta(paths, wanted)
+        LOG.info(f"{self.name} built at {paths.binaries_dir}")
         LOG.info(
-            "reuse it elsewhere via:\n    export PATH=%s:$PATH", paths.binaries_dir
+            f"reuse it elsewhere with:\n\texport PATH={paths.binaries_dir}:$PATH\n\n"
         )
         return dest
-
-    def env(self, paths):
-        bindir = paths.binaries_dir
-        return {
-            "ELECTRS": os.path.join(bindir, "electrs"),
-            "ELECTRS_PATH": bindir,
-        }
 
 
 class ElectrsClient(Client):

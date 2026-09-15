@@ -5,7 +5,6 @@ import pytest
 from bornal import daemon
 from bornal.client import ClientError
 from bornal.node import make_backend
-from bornal.plugins import electrs
 from bornal.plugins.bitcoind import BitcoindDaemon
 from bornal.plugins.electrs import ElectrsClient, ElectrsCompiler, ElectrsDaemon
 
@@ -46,20 +45,20 @@ def test_cache_prefered(paths, spy_build, electrs_compiler, monkeypatch):
     paths.ensure()
     electrs_compiler.ensure(paths)
 
-    def never_called():
+    def never_called(self):
         raise AssertionError("PATH lookup must not shadow the cache")
 
-    monkeypatch.setattr(electrs, "_on_path", never_called)
+    monkeypatch.setattr(ElectrsCompiler, "on_path", never_called)
     electrs_compiler.ensure(paths)
 
 
 def test_from_path(paths, electrs_compiler, monkeypatch, tmp_path):
     fake = tmp_path / "electrs"
     fake.write_text("#!/bin/sh\n")
-    monkeypatch.setattr(electrs, "_on_path", lambda: str(fake))
+    monkeypatch.setattr(ElectrsCompiler, "on_path", lambda self: str(fake))
     out = electrs_compiler.ensure(paths)
     assert os.path.exists(out)
-    assert electrs._read_build_meta(paths.binaries_dir) == {"revision": "path"}
+    assert electrs_compiler.read_build_meta(paths) == {"revision": "path"}
 
 
 def test_export_electrs_path(paths):
