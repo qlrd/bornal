@@ -1,4 +1,3 @@
-from bornal.plugins import bitcoind
 from bornal.plugins.bitcoind import CoreCompiler
 
 
@@ -28,7 +27,7 @@ def test_cached_build_mismatched_meta_rebuilds(paths, spy_build, mock_bitcoind_c
 
     CoreCompiler().ensure(paths, revision="30.2")
     assert any(c[:2] == ["git", "clone"] for c in spy_build)
-    assert bitcoind._read_build_meta(paths.binaries_dir) == {
+    assert CoreCompiler().read_build_meta(paths) == {
         "revision": "30.2",
         "wallet": False,
     }
@@ -47,7 +46,7 @@ def test_path_binary_adopted_when_no_cache(paths, spy_build, mock_bitcoind_bin_p
     dest = CoreCompiler().ensure(paths)
     with open(dest) as handle:
         assert handle.read() == "mockuo"
-    assert bitcoind._read_build_meta(paths.binaries_dir) == {
+    assert CoreCompiler().read_build_meta(paths) == {
         "revision": "path",
         "wallet": None,
     }
