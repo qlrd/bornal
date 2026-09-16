@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import io
 import json
 import os
@@ -132,6 +133,43 @@ class MockedSpyRpc:
         self.height = 0
         self._addresses = []
         self._mined_to = None
+        self._wallets = {}
+        self._finalizable = []
+        self._acceptable = []
+        self._roles = {}
+        self._reject_reason = (
+            "mempool-script-verify-flag-failed "
+            "(Operation not valid with the current stack size)"
+        )
+
+    @staticmethod
+    def _txid(hextx):
+        return hashlib.sha256(hextx.encode()).hexdigest()
+
+    @property
+    def finalizable(self):
+        return self._finalizable
+
+    @property
+    def acceptable(self):
+        return self._acceptable
+
+    @property
+    def roles(self):
+        return self._roles
+
+    @property
+    def reject_reason(self):
+        return self._reject_reason
+
+    def _reject_details(self, hextx):
+        txid = self._txid(hextx)
+        return "%s, input 0 of %s (wtxid %s), spending %s:0" % (
+            self.reject_reason,
+            txid,
+            txid,
+            "00" * 32,
+        )
 
     def _new_address(self):
         address = "bcrt1qspy%d" % len(self._addresses)
@@ -177,6 +215,12 @@ class MockedSpyRpc:
         elif method == "getblockcount":
             body = {"result": self.height, "error": None}
         elif method == "createwallet":
+            self._wallets[params[0]] = {
+                "disable_private_keys": params[1] if len(params) > 1 else False,
+                "blank": params[2] if len(params) > 2 else False,
+                "avoid_reuse": params[4] if len(params) > 4 else False,
+                "descriptors": params[5] if len(params) > 5 else True,
+            }
             body = {"result": {"name": params[0]}, "error": None}
         elif method == "getnewaddress":
             body = {"result": self._new_address(), "error": None}
@@ -185,13 +229,114 @@ class MockedSpyRpc:
             body = {"result": BASE_COINBASE_SUBSIDY if matured else 0, "error": None}
         elif method == "listunspent":
             body = {"result": self._list_unspent(), "error": None}
+        elif method == "importdescriptors":
+            result = []
+            for req in params[0]:
+                if "#" in req["desc"]:
+                    result.append({"success": True})
+                else:
+                    error = {"code": -5, "message": "Missing checksum"}
+                    result.append({"success": False, "error": error})
+            body = {"result": result, "error": None}
+        elif method == "listwallets":
+            body = {"result": list(self._wallets), "error": None}
+        elif method == "getwalletinfo":
+            if not self._wallets:
+                body = {
+                    "result": None,
+                    "error": {
+                        "code": -18,
+                        "message": "No wallet is loaded. Load a wallet using "
+                        "loadwallet or create a new one with createwallet. "
+                        "(Note: A default wallet is no longer automatically "
+                        "created)",
+                    },
+                }
+            elif len(self._wallets) > 1:
+                body = {
+                    "result": None,
+                    "error": {
+                        "code": -19,
+                        "message": "Multiple wallets are loaded. Please select "
+                        "which wallet to use by requesting the RPC through the "
+                        "/wallet/<walletname> URI path.",
+                    },
+                }
+            else:
+                name, opts = next(iter(self._wallets.items()))
+                body = {
+                    "result": {
+                        "walletname": name,
+                        "walletversion": 169900,
+                        "format": "sqlite",
+                        "txcount": self.height if self._mined_to else 0,
+                        "keypoolsize": 0 if opts["blank"] else 1000,
+                        "keypoolsize_hd_internal": 0 if opts["blank"] else 1000,
+                        "paytxfee": 0.0,
+                        "private_keys_enabled": not opts["disable_private_keys"],
+                        "avoid_reuse": opts["avoid_reuse"],
+                        "scanning": False,
+                        "descriptors": opts["descriptors"],
+                        "external_signer": False,
+                        "blank": opts["blank"],
+                        "flags": [],
+                    },
+                    "error": None,
+                }
+        elif method == "addnode":
+            if len(params) < 2:
+                error = {"code": -1, "message": "addnode needs node and command"}
+                body = {"result": None, "error": error}
+            else:
+                body = {"result": None, "error": None}
+        elif method == "finalizepsbt":
+            complete = params[0] in self.finalizable
+            extract = params[1] if len(params) > 1 else True
+            if complete and extract:
+                result = {"hex": self._txid(params[0]), "complete": True}
+            else:
+                result = {"psbt": params[0], "complete": complete}
+            body = {"result": result, "error": None}
+        elif method == "analyzepsbt":
+            role = self.roles.get(params[0], "updater")
+            body = {"result": {"next": role}, "error": None}
+        elif method == "testmempoolaccept":
+            result = []
+            exit_early = False
+            for hextx in params[0]:
+                txid = self._txid(hextx)
+                verdict = {"txid": txid, "wtxid": txid}
+                if exit_early:
+                    pass
+                elif hextx in self.acceptable:
+                    verdict["allowed"] = True
+                    verdict["vsize"] = 110
+                    verdict["fees"] = {
+                        "base": 0.0001,
+                        "effective-feerate": 0.00090909,
+                        "effective-includes": [txid],
+                    }
+                else:
+                    verdict["allowed"] = False
+                    verdict["reject-reason"] = self.reject_reason
+                    verdict["reject-details"] = self._reject_details(hextx)
+                    exit_early = True
+                result.append(verdict)
+            body = {"result": result, "error": None}
+        elif method == "sendrawtransaction":
+            if params[0] in self.acceptable:
+                body = {"result": self._txid(params[0]), "error": None}
+            else:
+                error = {"code": -26, "message": self._reject_details(params[0])}
+                body = {"result": None, "error": error}
         else:
             body = {"result": None, "error": "not implemented"}
         self.bodies.append(body)
         data = json.dumps(body).encode()
         if body["error"]:
+            headers = {"Content-Type": "application/json", "X-Custom-Header": "test"}
             raise urllib.error.HTTPError(
-                req.full_url, 500, "Internal Server Error", {}, io.BytesIO(data)
+                req.full_url, 500, "Internal Server Error", headers, io.BytesIO(data)
             )
         return io.BytesIO(data)
 

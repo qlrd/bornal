@@ -51,8 +51,8 @@ class Backend:
     def stop(self):
         try:
             self.client.call("stop")
-        except ClientError:
-            pass
+        except ClientError as exc:
+            self._log.warning(str(exc))
         self.daemon.stop()
         return self
 
@@ -94,11 +94,19 @@ class IntegrationTest(ABC):
         self._data_dir = data_dir or env_data_dir()
         self._log = log or LOG
         self._declared = []
-        self.backends: list[Backend] = []
+        self._backends: list[Backend] = []
 
     @property
     def log(self):
         return self._log
+
+    @property
+    def declared(self):
+        return self._declared
+
+    @property
+    def backends(self):
+        return self._backends
 
     def add_backend(self, name, extra_args=(), **daemon_kwargs):
         """Declare a backend to start, ``extra_args`` is the raw argv and ``daemon_args``
@@ -115,8 +123,9 @@ class IntegrationTest(ABC):
     def run_test(self):
         """Run assertions against ``self.backends``"""
 
-    def setup_backends(self):
-        """Start every declared backend and expose them as ``self.backends``."""
+    def main(self):
+        """Main cyle: set params / start backends / run_test / stop"""
+        self.set_test_params()
         for index, (name, kwargs) in enumerate(self._declared):
             datadir = os.path.join(self._data_dir, "%s%d" % (name, index))
             node = make_backend(
@@ -124,30 +133,20 @@ class IntegrationTest(ABC):
             )
             node.start()
             self.backends.append(node)
-
-    def stop_backends(self):
-        """Stop every backend (lifo), then raise one ``BackendError`` grouping
-        every failure"""
-        errors: list[Exception] = []
-        lifo = reversed(self.backends)
-        for node in lifo:
-            try:
-                node.stop()
-            except Exception as exc:
-                exc.add_note(
-                    f"while stopping {node.daemon.binary_name} at {node.client.url}: "
-                    f"see {node.daemon.datadir}"
-                )
-                errors.append(exc)
-        self.backends = []
-        if errors:
-            raise BackendError(f"{len(errors)} backend(s) failed to stop", errors)
-
-    def main(self):
-        """set params / start backends / run_test / stop"""
-        self.set_test_params()
-        self.setup_backends()
         try:
             self.run_test()
         finally:
-            self.stop_backends()
+            errors: list[Exception] = []
+            lifo = reversed(self.backends)
+            for node in lifo:
+                try:
+                    node.stop()
+                except Exception as exc:
+                    exc.add_note(
+                        f"while stopping {node.daemon.binary_name} at {node.client.url}: "
+                        f"see {node.daemon.datadir}"
+                    )
+                    errors.append(exc)
+            self._backends = []
+            if errors:
+                raise BackendError(f"{len(errors)} backend(s) failed to stop", errors)

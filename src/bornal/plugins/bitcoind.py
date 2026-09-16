@@ -164,8 +164,10 @@ class BitcoindClient(Client):
     def get_block_count(self) -> int:
         return self.call("getblockcount")
 
-    def create_wallet(self, alias):
-        return self.call("createwallet", alias)
+    def create_wallet(
+        self, alias, disable_private_keys: bool = False, blank: bool = False
+    ):
+        return self.call("createwallet", alias, disable_private_keys, blank)
 
     def get_new_address(self) -> str:
         return self.call("getnewaddress")
@@ -178,6 +180,32 @@ class BitcoindClient(Client):
 
     def list_unspent(self) -> list:
         return self.call("listunspent")
+
+    def list_wallets(self) -> list:
+        return self.call("listwallets")
+
+    def get_wallet_info(self) -> dict:
+        return self.call("getwalletinfo")
+
+    def import_descriptors(self, req: list[dict]) -> list:
+        return self.call("importdescriptors", req)
+
+    def add_node(self, node: str, command: str = "onetry") -> None:
+        return self.call("addnode", node, command)
+
+    def finalize_psbt(self, psbt: str, extract: bool = True) -> dict:
+        return self.call("finalizepsbt", psbt, extract)
+
+    def analyze_psbt(self, psbt: str) -> dict:
+        return self.call("analyzepsbt", psbt)
+
+    def test_mempool_accept(
+        self, rawtxs: list, maxfeerate: int | float = 0.1
+    ) -> list[dict]:
+        return self.call("testmempoolaccept", rawtxs, maxfeerate)
+
+    def send_raw_transaction(self, hexstr: str, maxfeerate: int | float = 0.1) -> str:
+        return self.call("sendrawtransaction", hexstr, maxfeerate)
 
 
 class BitcoindDaemon(Daemon):
