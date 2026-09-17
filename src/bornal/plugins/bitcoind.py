@@ -207,6 +207,15 @@ class BitcoindClient(Client):
     def send_raw_transaction(self, hexstr: str, maxfeerate: int | float = 0.1) -> str:
         return self.call("sendrawtransaction", hexstr, maxfeerate)
 
+    def get_address_info(self, address: str) -> dict:
+        return self.call("getaddressinfo", address)
+
+    def get_balances(self) -> dict:
+        return self.call("getbalances")
+
+    def get_connection_count(self) -> int:
+        return self.call("getconnectioncount")
+
 
 class BitcoindDaemon(Daemon):
     """Runs ``bitcoind`` with RPC enabled; the chain is set by ``network``

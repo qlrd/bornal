@@ -83,10 +83,14 @@ class IntegrationTest(ABC):
 
     ``main()`` lifecycle:
 
-    - set params
-    - start backends
-    - run_test
-    - stop (every backend is stopped, even on failure).
+    - set params and build the backends (``_on_set_test_params()``)
+    - start backends, then run_test (``_on_run_test()``)
+    - on_stop_test (optional hook: assertions before the backends go down),
+      then stop (``_on_stop_test()``: every backend is stopped, even on failure).
+
+    A session that keeps the backends up across several tests (see
+    ``examples/conftest.py``) calls the same three steps itself, with a no-op
+    ``run_test``.
     """
 
     def __init__(self, binaries_dir=None, data_dir=None, log=None):
@@ -123,18 +127,37 @@ class IntegrationTest(ABC):
     def run_test(self):
         """Run assertions against ``self.backends``"""
 
-    def main(self):
-        """Main cyle: set params / start backends / run_test / stop"""
+    def on_stop_test(self):
+        """Run assertions before stopping ``self.backends`` (optional hook)"""
+
+    def _on_set_test_params(self):
         self.set_test_params()
         for index, (name, kwargs) in enumerate(self._declared):
             datadir = os.path.join(self._data_dir, "%s%d" % (name, index))
             node = make_backend(
                 name, self._binaries_dir, datadir, log=self._log, **kwargs
             )
-            node.start()
             self.backends.append(node)
+
+    def _on_run_test(self):
+        """Start every backend, then ``run_test``; if one fails to start, stop the
+        ones already up and re-raise"""
         try:
-            self.run_test()
+            for node in self.backends:
+                node.start()
+        except BaseException:
+            self._on_stop_test()
+            raise
+        self.run_test()
+
+    def _on_stop_test(self):
+        """``on_stop_test`` hook, then stop every backend (lifo) even if the hook
+        raises; one ``BackendError`` groups every stop failure. A no-op once the
+        backends are down, so a failed start does not run the hook twice"""
+        if not self.backends:
+            return
+        try:
+            self.on_stop_test()
         finally:
             errors: list[Exception] = []
             lifo = reversed(self.backends)
@@ -150,3 +173,11 @@ class IntegrationTest(ABC):
             self._backends = []
             if errors:
                 raise BackendError(f"{len(errors)} backend(s) failed to stop", errors)
+
+    def main(self):
+        """Main cyle: set params / start backends / run_test / stop_test / stop"""
+        self._on_set_test_params()
+        try:
+            self._on_run_test()
+        finally:
+            self._on_stop_test()
