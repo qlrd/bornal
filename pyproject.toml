@@ -106,3 +106,14 @@ sequence = ["test-clean", "test-unit", "test-functional", "coverage-report"]
 [tool.poe.tasks.tests]
 help = "Alias for `test-cov`"
 ref = "test-cov"
+
+[tool.poe.tasks.example]
+help = "run example"
+cmd = "pytest --nproc ${nproc} --build-bitcoin ${bitcoin} ${debug:+--show-capture all --capture tee-sys} ${wallet:+--wallet} ${test:+examples/test_${test}.py}"
+args = [
+    { name = "nproc", options = ["--nproc", "-j"], type = "integer", default = 8 },
+    { name = "bitcoin", options = ["--bitcoin", "-B"], default = "latest"},
+    { name = "wallet", options = ["--wallet", "-W"], type = "boolean", help = "have wallet support or not"},
+    { name = "debug", options = ["--debug", "-d"], type = "boolean", help = "many verbose output"},
+    { name = "test", options = ["--test", "-t"], help = "example name"}
+]
