@@ -1,29 +1,18 @@
 """bornal as a pytest 2nd layer.
-
-Registers a pytest plugin (see pyproject ``pytest11``), so any test — bornal's
-own or a downstream project's — receives its fixtures by argument name without a
-conftest or ``pytest_plugins``: just install bornal, like installing pytest.
-
-The run phase that ``bornal run`` used to do is now opt-in through pytest flags
-contributed by the daemon plugins. Passing a per-daemon ``--build-<name>``
-(e.g. ``--build-bitcoin 30.2`` or ``--build-bitcoin latest``) builds that daemon
-on demand, wipes ``data/``/``logs/`` (unless ``--preserve-data``) and exports
-``INTEGRATION_TEMP_DIR`` (plus ``BINARIES_DIR`` and each daemon's own env); the
-fixtures then discover the built binaries and a clean data dir from there.
-Without any ``--build-<name>`` the plugin only contributes its fixtures, so
-plain ``pytest`` never triggers a build.
+Override in a module or a conftest that returns an ``IntegrationTest subclass,
+or any callable taking your data_dir``.
 """
 
-import contextlib
 import os
-
+import pathlib
 import pytest
 
 from . import daemon
 from .logger import LOG, set_verbose
-from .node import env_binaries_dir, env_data_dir, make_backend
+from .node import (
+    env_data_dir,
+)
 from .paths import Paths
-from .plugins.bitcoind import UNSPENDABLE_ADDRESS
 from .prepare import ensure_daemons
 
 
@@ -143,52 +132,65 @@ def prepare_run(config, selected):
     return paths
 
 
-@contextlib.contextmanager
-def _started_backend(name, index=0, extra_args=(), **daemon_kwargs):
-    datadir = os.path.join(env_data_dir(), "%s%d" % (name, index))
-    node = make_backend(
-        name, env_binaries_dir(), datadir, extra_args=extra_args, **daemon_kwargs
-    )
-    try:
-        node.start()
-        yield node
-    finally:
-        node.stop()
+@pytest.fixture(scope="module")
+def test_factory(request):
+    """Need to be overrided on your own module."""
+    pytest.fail(f"{request.module.__name__} defines no test_factory fixture.")
 
 
-@pytest.fixture
-def backend():
-    """start a plugin backend by name; stop it on teardown"""
-    opened = []
+@pytest.fixture(scope="module")
+def integration_test(request, test_factory):
+    """
+    This is a wrapper for custom IntegrationTest derived classes to be used on
+    fixture style. You define a derived class on you <project>/conftest.py
+    with proper setup and define you own overrides of ``test_factory``:
 
-    def _open(name, extra_args=(), **daemon_kwargs):
-        manager = _started_backend(
-            name, index=len(opened), extra_args=extra_args, **daemon_kwargs
+    ```python
+    # on your conftest.py
+    from bornal.node import IntegrationTest
+
+    class SomeTest(IntegrationTest):
+
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            self.localhost = "127.0.0.1"
+            self.nodes = [
+                {"daemon": "bitcoin-core", "p2p_port": free_port()},
+                {"daemon": "bitcoin-core", "p2p_port": free_port()},
+            ]
+
+        def set_test_params(self):
+            for node in self.nodes:
+                self.log.info(
+                    f"Preparing '{node.get('daemon')}' ({self.localhost}:{node.get('p2p_port')})"
+                )
+                self.add_backend(node.get("daemon"), p2p_port=node.get("p2p_port"))
+
+        def run_test(self):
+            self.log.info("Tests running")
+
+        def on_stop_test(self):
+            self.log.info("Tests stopped")
+
+
+    @pytest.fixture(scope="module")
+    def test_factory(request):
+        return SomeTest
+
+    # on your tests files
+    def test_001_my_test(integration_test):
+        # Integration test is now available until all tests occurs
+        alice, bob = integration_test.backends
+        ...
+    ```
+
+    """
+    test = test_factory(
+        data_dir=os.path.join(
+            env_data_dir(), pathlib.Path(request.module.__file__).stem
         )
-        started = manager.__enter__()
-        opened.append(manager)
-        return started
-
-    yield _open
-
-    for manager in reversed(opened):
-        manager.__exit__(None, None, None)
-
-
-@pytest.fixture
-def bitcoin_backend(backend):
-    """A started bitcoind (regtest) daemon binded to a client, ready for RPC"""
-    return backend("bitcoin-core")
-
-
-@pytest.fixture
-def bitcoin_electrs_backend(backend):
-    """A started electrs daemon, indexing a binded bitcoind (regtest) backend."""
-    # Electrs is a important item on a bitcoin user stack since it indexer helps
-    # users in adopt "specific domain utxo policies" (singlesig, multisig,
-    # miniscript for the purposes of this project). This one is used when
-    # the stack do not support builtin electrs support (e.g. bitcoin core), while
-    # could support built-in ones (e.g., floresta).
-    _btc_backend = backend("bitcoin-core", p2p_port=daemon.free_port())
-    _btc_backend.client.generate_to_address(1, UNSPENDABLE_ADDRESS)
-    return backend("electrs", bitcoind=_btc_backend.daemon)
+    )
+    test._on_set_test_params()
+    test._on_run_test()
+    yield test
+    test._on_stop_test()

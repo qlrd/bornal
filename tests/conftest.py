@@ -134,6 +134,7 @@ class MockedSpyRpc:
         self._addresses = []
         self._mined_to = None
         self._wallets = {}
+        self._peers = 0
         self._finalizable = []
         self._acceptable = []
         self._roles = {}
@@ -175,6 +176,18 @@ class MockedSpyRpc:
         address = "bcrt1qspy%d" % len(self._addresses)
         self._addresses.append(address)
         return address
+
+    def _no_wallet_error(self):
+        """The body bitcoind answers wallet RPCs with when no wallet is loaded"""
+        return {
+            "result": None,
+            "error": {
+                "code": -18,
+                "message": "No wallet is loaded. Load a wallet using loadwallet "
+                "or create a new one with createwallet. (Note: A default wallet "
+                "is no longer automatically created)",
+            },
+        }
 
     def _list_unspent(self):
         if self.height <= COINBASE_MATURITY:
@@ -288,6 +301,7 @@ class MockedSpyRpc:
                 error = {"code": -1, "message": "addnode needs node and command"}
                 body = {"result": None, "error": error}
             else:
+                self._peers += 1
                 body = {"result": None, "error": None}
         elif method == "finalizepsbt":
             complete = params[0] in self.finalizable
@@ -329,6 +343,48 @@ class MockedSpyRpc:
             else:
                 error = {"code": -26, "message": self._reject_details(params[0])}
                 body = {"result": None, "error": error}
+        elif method == "getconnectioncount":
+            body = {"result": self._peers, "error": None}
+        elif method == "getbalances":
+            if not self._wallets:
+                body = self._no_wallet_error()
+            else:
+                mine = self._mined_to in self._addresses
+                mature = max(0, self.height - COINBASE_MATURITY) if mine else 0
+                immature = min(self.height, COINBASE_MATURITY) if mine else 0
+                body = {
+                    "result": {
+                        "mine": {
+                            "trusted": BASE_COINBASE_SUBSIDY * mature,
+                            "untrusted_pending": 0,
+                            "immature": BASE_COINBASE_SUBSIDY * immature,
+                        },
+                        "lastprocessedblock": {
+                            "hash": "%064x" % self.height,
+                            "height": self.height,
+                        },
+                    },
+                    "error": None,
+                }
+        elif method == "getaddressinfo":
+            if not self._wallets:
+                body = self._no_wallet_error()
+            else:
+                mine = params[0] in self._addresses
+                body = {
+                    "result": {
+                        "address": params[0],
+                        "scriptPubKey": "",
+                        "ismine": mine,
+                        "solvable": mine,
+                        "iswatchonly": False,
+                        "isscript": False,
+                        "iswitness": True,
+                        "ischange": False,
+                        "labels": [],
+                    },
+                    "error": None,
+                }
         else:
             body = {"result": None, "error": "not implemented"}
         self.bodies.append(body)

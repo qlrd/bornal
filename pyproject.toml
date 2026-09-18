@@ -35,6 +35,7 @@ dev = [
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-p pytester"
 
 [tool.coverage.run]
 source = ["src/bornal"]

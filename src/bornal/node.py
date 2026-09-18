@@ -88,9 +88,10 @@ class IntegrationTest(ABC):
     - on_stop_test (optional hook: assertions before the backends go down),
       then stop (``_on_stop_test()``: every backend is stopped, even on failure).
 
-    A session that keeps the backends up across several tests (see
-    ``examples/conftest.py``) calls the same three steps itself, with a no-op
-    ``run_test``.
+    A session could be used so that keeps the backends up across several tests
+    (see ``examples/conftest.py``) calls the same three steps itself,
+    with a no-op ``run_test``, allowing multiple and small tests on a file,
+    but in practice are only one.
     """
 
     def __init__(self, binaries_dir=None, data_dir=None, log=None):
@@ -175,7 +176,7 @@ class IntegrationTest(ABC):
                 raise BackendError(f"{len(errors)} backend(s) failed to stop", errors)
 
     def main(self):
-        """Main cyle: set params / start backends / run_test / stop_test / stop"""
+        """Main cyle: set params / start backends / run_test / on_stop_test / stop"""
         self._on_set_test_params()
         try:
             self._on_run_test()
