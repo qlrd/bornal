@@ -1,9 +1,5 @@
 # bornal
 
-This work is mainly inspired by [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
-and [wizardsardine/liana](https://github.com/wizardsardine/liana) integration
-test framework(s).
-
 It scaffolds some test structure in a jekyll-like style and lets `pytest` know
 how to build bitcoin regtest daemons from source:
 
@@ -13,6 +9,8 @@ but because **it is a choice to rely on a runtime-specific bitcoin
 compilation built for the test's purpose**).
 
 - `bitcoind`
+- `electrs`
+- `btcd` (TODO)
 - `utreexod` (TODO)
 - `florestad` (TODO)
 - `lianad` (TODO)
@@ -89,32 +87,80 @@ the next time you will not need to use `--build-*`.
 
 ## Writing Tests
 
-This is for writing test on **your project**. Once you have your `tests/integration`
-build (or already built and bought the idea), `bornal` registers this plugin as
-a pytest plugin and its fixtures are available on `pytest` runtime:
+This is for writing test for your project.
+
+First create a `<mytestpath>/conftest.py` as in any `pytest` setup:
 
 ```python
-from bornal.testing import assert_wallet_roundtrip
-
-
-def test_wallet(bitcoin_backend):
-    assert_wallet_roundtrip(bitcoin_backend)
-```
-
-Or subclass the `IntegrationTest` (an `ABC` derived class), which mirrors
-[getfloresta/Floresta](https://github.com/getfloresta/Floresta) integration
-test framework:
-
-```python
+import pytest
+from bornal.daemon import free_port
 from bornal.node import IntegrationTest
 
-
+# Define a proper setup
 class MyTest(IntegrationTest):
+    """A simple class to prepare tests"""
+
     def set_test_params(self):
-        self.add_backend("bitcoin-core")
+        # Alice
+        self.add_backend("bitcoin-core", p2p_port=free_port())
+
+        # Bob
+        self.add_backend("bitcoin-core", p2p_port=free_port())
 
     def run_test(self):
-        assert self.backends[0].client.get_block_count() == 0
+        for backend in self.backends:
+            self.log.info(f"Running bitcoin (p2p_port={backend.daemon.p2p_port})")
+
+@pytest.fixture(scope="module")
+def test_factory(request):
+    return MyTest
+
+# `integration_test` is an instance of `MyTest`, so you could use any property
+# like: `backends[i].daemon`, `backends[i].client`.
+@pytest.fixture
+def alice(integration_test):
+    return integration_test.backends[0]
+
+@pytest.fixture
+def bob(integration_test):
+    return integration_test.backends[1]
+```
+
+`test_factory` is a pre-defined fixture. The default one will fail if it isn't
+overridden.
+
+`integration_test` fixture is a customizable instance of the predefined factory
+class defined in `test_factory` fixture.
+
+Nodes stay up until the module's last test. So, it's important to consider the
+bitcoin context in a way that the order matters. For example in a file like
+`<mytestpath>/test_example.py`:
+
+```python
+from bornal.plugins.bitcoind import UNSPENDABLE_ADDRESS
+
+from bornal.testing import (
+    assert_block_count,
+    connect_p2p,
+    generate_to_address,
+    sync_blocks
+)
+
+def test_000(alice, bob):
+    assert_block_count(alice, 0)
+    assert_block_count(bob, 0)
+
+def test_001(alice,bob):
+    connect_p2p(alice,bob) # Connect P2P already syncs blocks
+    assert_block_count(bob, 0)
+
+def test_002(alice,bob):
+    generate_to_address(alice, UNSPENDABLE_ADDRESS, block_amount=1)
+    assert_block_count(bob, 0)
+
+def test_003(alice,bob):
+    sync_blocks(alice, bob)
+    assert_block_count(bob, 1)
 ```
 
 ## Plugins
