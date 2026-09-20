@@ -22,11 +22,37 @@ __all__ = [
     "connect_p2p",
     "create_wallet",
     "generate_to_address",
+    "get_new_address",
     "sync_blocks",
+    "wait_wallet_synced",
 ]
 
 BASE_COINBASE_SUBSIDY = 50
 COINBASE_MATURITY = 100
+
+
+def wait_wallet_synced(backend: Backend, timeout: int = 30):
+    """Wait for some time (max ``timeout`) to wallet to be synced"""
+    die = time.monotonic() + timeout
+    while time.monotonic() < die:
+        processed = backend.client.get_wallet_info()["lastprocessedblock"]["height"]
+        if processed == backend.client.get_block_count():
+            return
+        time.sleep(0.25)
+    raise TimeoutError(f"Wallet did not catch up with the node in {timeout}s")
+
+
+def _wait_connect_p2p(alice: Backend, bob: Backend, timeout: int = 30):
+    die = time.monotonic() + timeout
+    while time.monotonic() < die:
+        peerinfo = alice.client.get_peer_info()
+        p2p_addr = f"{bob.daemon.host}:{bob.daemon.p2p_port}"
+        if any(info["addr"] == p2p_addr for info in peerinfo):
+            return
+        time.sleep(0.25)
+    raise TimeoutError(
+        f"Peer {alice.daemon.host}:{alice.daemon.p2p_port} did not connect to {bob.daemon.host}:{bob.daemon.p2p_port} in {timeout}s"
+    )
 
 
 def connect_p2p(alice: Backend, bob: Backend, timeout: int = 30):
@@ -37,6 +63,8 @@ def connect_p2p(alice: Backend, bob: Backend, timeout: int = 30):
     res = alice.client.add_node(p2p_addr, "onetry")
     if res is not None:
         raise AssertionError(f"'addnode' response expected to be None, got {res}")
+    _wait_connect_p2p(alice, bob, timeout)
+
     sync_blocks(alice, bob, timeout)
 
 
@@ -81,35 +109,48 @@ def create_wallet(
 def assert_chain(backend: Backend, chain: str = "regtest"):
     """Assert that the ``Backend`` is on correct chain"""
     info = backend.client.get_blockchain_info()["chain"]
-    assert info == chain
+    if info != chain:
+        raise AssertionError(f"Expected chain '{chain}', got '{info}'")
     LOG.debug(info)
 
 
 def assert_block_count(backend: Backend, count: int = 0):
     """Assert block count for given ``Backend``"""
     _count = backend.client.get_block_count()
-    assert _count == count
+    if _count != count:
+        name = backend.daemon.binary_name
+        host = backend.daemon.host
+        port = backend.daemon.port
+        raise AssertionError(
+            f"'{name}' at {host}:{port} expected {count} blocks, got {_count}"
+        )
     LOG.debug(_count)
 
 
-def generate_to_address(backend: Backend, block_amount: int = 0):
-    """Mine ``block_amount`` blocks to a fresh wallet address; return the
-    address that received the coinbase"""
+def get_new_address(backend: Backend, label: str, address_type: str = "bech32"):
+    """Generate some new address given some backend"""
+    if not label:
+        raise ValueError("Needs a label")
     try:
-        address = backend.client.get_new_address()
+        address = backend.client.get_new_address(label, address_type)
     except ClientError as exc:
         raise AssertionError("getnewaddress failed: %s" % exc) from exc
+    return address
 
+
+def generate_to_address(
+    backend: Backend, address: str | None = None, block_amount: int = 0
+):
+    """Mine ``block_amount`` blocks to some coinbase address"""
     try:
-        backend.client.generate_to_address(block_amount, address)
+        hashes = backend.client.generate_to_address(block_amount, address)
     except ClientError as exc:
         raise AssertionError(
-            "generatetoaddress failed: {} wasn't able to generate to {}".format(
-                backend, address
+            "generatetoaddress failed: {}::{} wasn't able to generate to {}".format(
+                backend.daemon.binary_name, backend.daemon.port, address
             )
         ) from exc
-
-    return address
+    return hashes
 
 
 def assert_wallet_roundtrip(
@@ -123,8 +164,11 @@ def assert_wallet_roundtrip(
     assert_block_count(backend, block_count)
 
     create_wallet(backend, name)
-    address = generate_to_address(backend, COINBASE_MATURITY + 1)
-
+    address = get_new_address(backend, f"{name}::assert_wallet_roundtrip", "legacy")
+    hashes = generate_to_address(backend, address, COINBASE_MATURITY + 1)
+    LOG.debug(
+        f"{backend.daemon.binary_name} ({backend.daemon.host}:{backend.daemon.port}) mined {len(hashes)} hashes"
+    )
     assert_block_count(backend, block_count + COINBASE_MATURITY + 1)
     balance = backend.client.get_balance()
     if not balance >= BASE_COINBASE_SUBSIDY:

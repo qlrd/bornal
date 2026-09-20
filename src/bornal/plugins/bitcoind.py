@@ -1,6 +1,7 @@
 import os
 import tempfile
 
+
 from ..client import Client
 from ..daemon import Compiler, CompilerError, Daemon, run, abort
 from ..deps import check_installed
@@ -169,8 +170,8 @@ class BitcoindClient(Client):
     ):
         return self.call("createwallet", alias, disable_private_keys, blank)
 
-    def get_new_address(self) -> str:
-        return self.call("getnewaddress")
+    def get_new_address(self, label: str, address_type: str = "bech32") -> str:
+        return self.call("getnewaddress", label, address_type)
 
     def generate_to_address(self, nblocks, address) -> list:
         return self.call("generatetoaddress", nblocks, address)
@@ -204,6 +205,15 @@ class BitcoindClient(Client):
     ) -> list[dict]:
         return self.call("testmempoolaccept", rawtxs, maxfeerate)
 
+    def create_raw_transaction(
+        self,
+        inputs: list[dict],
+        outputs: list[dict],
+        locktime: int = 0,
+        replaceable: bool = False,
+    ) -> str:
+        return self.call("createrawtransaction", inputs, outputs, locktime, replaceable)
+
     def send_raw_transaction(self, hexstr: str, maxfeerate: int | float = 0.1) -> str:
         return self.call("sendrawtransaction", hexstr, maxfeerate)
 
@@ -215,6 +225,65 @@ class BitcoindClient(Client):
 
     def get_connection_count(self) -> int:
         return self.call("getconnectioncount")
+
+    def create_psbt(
+        self,
+        inputs: list[dict],
+        outputs: list[dict],
+        locktime: int = 0,
+        replaceable: bool = False,
+    ) -> str:
+        return self.call("createpsbt", inputs, outputs, locktime, replaceable)
+
+    def decode_psbt(self, psbt: str) -> dict:
+        return self.call("decodepsbt", psbt)
+
+    def decode_raw_transaction(self, hexstring: str, is_witness: bool):
+        return self.call("decoderawtransaction", hexstring, is_witness)
+
+    def wallet_create_funded_psbt(
+        self,
+        inputs: list[dict],
+        outputs: list[dict],
+        locktime: int = 0,
+        options: dict | None = None,
+        bip32derivs: bool = True,
+    ) -> dict:
+        return self.call(
+            "walletcreatefundedpsbt", inputs, outputs, locktime, options, bip32derivs
+        )
+
+    def wallet_process_psbt(
+        self,
+        psbt: str,
+        sign: bool = True,
+        sighashtype: str = "ALL",
+        bip32derivs: bool = True,
+    ) -> dict:
+        return self.call("walletprocesspsbt", psbt, sign, sighashtype, bip32derivs)
+
+    def sign_raw_transaction_with_wallet(
+        self,
+        hexstring: str,
+        prevtxs: list[dict] | None = None,
+        sighashtype: str = "ALL",
+    ) -> dict:
+        return self.call(
+            "signrawtransactionwithwallet", hexstring, prevtxs, sighashtype
+        )
+
+    def get_raw_mempool(
+        self, verbose: bool = False, mempool_sequence: bool = False
+    ) -> list | dict:
+        return self.call("getrawmempool", verbose, mempool_sequence)
+
+    def get_transaction(
+        self, txid: str, include_watch_only: bool = True, verbose: bool = False
+    ) -> dict:
+        return self.call("gettransaction", txid, include_watch_only, verbose)
+
+    def get_peer_info(self) -> list[dict]:
+        return self.call("getpeerinfo")
 
 
 class BitcoindDaemon(Daemon):

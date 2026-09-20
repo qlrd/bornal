@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+from bornal.plugins.bitcoind import UNSPENDABLE_ADDRESS
 from bornal.client import ClientError
 from bornal.node import make_backend
 from bornal.testing import (
@@ -19,6 +20,7 @@ from bornal.testing import (
     assert_wallet_roundtrip,
     connect_p2p,
     create_wallet,
+    get_new_address,
     generate_to_address,
     sync_blocks,
 )
@@ -102,15 +104,20 @@ def test_assert_wallet_roundtrip_wallet_missing(
         assert_wallet_roundtrip(node)
 
 
-def test_generatetoaddress_fail(monkeypatch, run_backend, spy_popen, spy_rpc):
+def test_generate_to_address_fail(monkeypatch, run_backend, spy_popen, spy_rpc):
     node = run_backend("bitcoin-core")
     hack = MagicMock(side_effect=ClientError("hacked"))
     monkeypatch.setattr(node.client, "generate_to_address", hack)
     with pytest.raises(AssertionError, match="generatetoaddress failed"):
-        generate_to_address(node, 1)
+        generate_to_address(node, UNSPENDABLE_ADDRESS, 1)
+
+
+def test_get_new_address_fail(monkeypatch, run_backend, spy_popen, spy_rpc):
+    node = run_backend("bitcoin-core")
+    hack = MagicMock(side_effect=ClientError("hacked"))
     monkeypatch.setattr(node.client, "get_new_address", hack)
     with pytest.raises(AssertionError, match="getnewaddress failed"):
-        generate_to_address(node, 1)
+        get_new_address(node, "test_testing::test_getnewaddress")
 
 
 def test_create_wallet(run_backend, spy_popen, spy_rpc):

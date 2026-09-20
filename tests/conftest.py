@@ -135,6 +135,7 @@ class MockedSpyRpc:
         self._mined_to = None
         self._wallets = {}
         self._peers = 0
+        self._peers_info = []
         self._finalizable = []
         self._acceptable = []
         self._roles = {}
@@ -301,7 +302,10 @@ class MockedSpyRpc:
                 error = {"code": -1, "message": "addnode needs node and command"}
                 body = {"result": None, "error": error}
             else:
-                self._peers += 1
+                self._peers_info.append(
+                    {"id": len(self._peers_info), "addr": params[0]}
+                )
+                self._peers = len(self._peers_info)
                 body = {"result": None, "error": None}
         elif method == "finalizepsbt":
             complete = params[0] in self.finalizable
@@ -385,6 +389,8 @@ class MockedSpyRpc:
                     },
                     "error": None,
                 }
+        elif method == "getpeerinfo":
+            body = {"result": self._peers_info, "error": None}
         else:
             body = {"result": None, "error": "not implemented"}
         self.bodies.append(body)
