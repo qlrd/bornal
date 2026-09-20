@@ -87,7 +87,7 @@ the next time you will not need to use `--build-*`.
 
 ## Writing Tests
 
-This is for writing test for your project.
+This is for writing tests for your project.
 
 First create a `<mytestpath>/conftest.py` as in any `pytest` setup:
 
