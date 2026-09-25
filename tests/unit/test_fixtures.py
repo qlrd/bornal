@@ -47,6 +47,12 @@ def test_factory():
     return SimpleTwoBitcoinCoreNodesTest
 """
 
+RUN_TEST_RAISES = CONFTEST.replace(
+    '    def run_test(self):\n        self.log.info("Tests running.")',
+    '    def run_test(self):\n        raise RuntimeError("Tests failed.")',
+)
+
+
 MODULE = """
 
 import pytest
@@ -164,3 +170,26 @@ def test_rpc_never_comes_up(setup, spy_popen, spy_rpc, pytester, monkeypatch):
     result.stdout.fnmatch_lines(["*rpc never came up*"])
     # the first node was spawned and is stopped before the error surfaces
     assert spy_popen.processes and all(p.terminated for p in spy_popen.processes)
+
+
+def test_run_test_raises_stops_backends(setup, spy_popen, spy_rpc, pytester):
+    pytester.makeconftest(RUN_TEST_RAISES)
+    pytester.makepyfile("def test_a(integration_test): pass")
+    result = _run(pytester)
+    result.assert_outcomes(errors=1)
+    result.stdout.fnmatch_lines(["*boom in run_test*"])
+    assert len(spy_popen.processes) == 2
+    assert all(p.terminated for p in spy_popen.processes)
+    assert spy_rpc.calls.count("stop") == 2
+
+
+def test_test_body_failure_stops_backends(setup, spy_popen, spy_rpc, pytester):
+    pytester.makeconftest(CONFTEST)
+    pytester.makepyfile(
+        "def test_a(integration_test):\n    raise RuntimeError('Test failed.')"
+    )
+    result = _run(pytester)
+    result.assert_outcomes(failed=1)
+    assert len(spy_popen.processes) == 2
+    assert all(p.terminated for p in spy_popen.processes)
+    assert spy_rpc.calls.count("stop") == 2
