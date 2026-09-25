@@ -142,8 +142,11 @@ def test_factory(request):
 def integration_test(request, test_factory):
     """
     This is a wrapper for custom IntegrationTest derived classes to be used on
-    fixture style. You define a derived class on you <project>/conftest.py
-    with proper setup and define you own overrides of ``test_factory``:
+    fixture and yield style used by C-lightning, Liana and Floresta.
+
+    With `bornal.node.IntegrationTest`class on you <project>/conftest.py you
+    can modularize it with ``test_factory(request)with proper setup and define you own overrides of
+    ``test_factory``:
 
     ```python
     # on your conftest.py
@@ -177,11 +180,23 @@ def integration_test(request, test_factory):
     def test_factory(request):
         return SomeTest
 
-    # on your tests files
-    def test_001_my_test(integration_test):
+    @pytest.fixture
+    def alice(integration_test):
+        return integration_test.backends[0]
+
+    @pytest.fixture
+    def bob(integration_test):
+        return integration_test.backends[1]
+    ```
+
+    On your tests files
+
+    ```python
+    from bornal.fixtures import connect_p2p
+
+    def test_000_my_test(alice, bob):
         # Integration test is now available until all tests occurs
-        alice, bob = integration_test.backends
-        ...
+        connect_p2p(alice, bob)
     ```
 
     """
@@ -191,6 +206,8 @@ def integration_test(request, test_factory):
         )
     )
     test._on_set_test_params()
-    test._on_run_test()
-    yield test
-    test._on_stop_test()
+    try:
+        test._on_run_test()
+        yield test
+    finally:
+        test._on_stop_test()

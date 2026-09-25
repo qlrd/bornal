@@ -1,6 +1,5 @@
 import os
 from abc import ABC, abstractmethod
-
 from .client import Client, ClientError
 from .daemon import get, Daemon
 from .logger import LOG
@@ -141,15 +140,16 @@ class IntegrationTest(ABC):
             self.backends.append(node)
 
     def _on_run_test(self):
-        """Start every backend, then ``run_test``; if one fails to start, stop the
-        ones already up and re-raise"""
+        """Start every backend then run `run_test`; if either raises, stop ones
+        already up and re-raise"""
         try:
             for node in self.backends:
                 node.start()
+
+            self.run_test()
         except BaseException:
             self._on_stop_test()
             raise
-        self.run_test()
 
     def _on_stop_test(self):
         """``on_stop_test`` hook, then stop every backend (lifo) even if the hook
