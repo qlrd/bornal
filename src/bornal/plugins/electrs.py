@@ -164,6 +164,10 @@ class ElectrsDaemon(Daemon):
         self._monitoring_port = free_port()
 
     @property
+    def bitcoind(self):
+        return self._bitcoind
+
+    @property
     def binary_name(self) -> str:
         return "electrs"
 
@@ -186,21 +190,24 @@ class ElectrsDaemon(Daemon):
             raise RuntimeError(
                 "electrs needs a bitcoind: pass bitcoind= or attach_bitcoind()"
             )
-        if backend.p2p_port is None:
-            raise RuntimeError(
-                "electrs syncs blocks over p2p: start bitcoind with p2p_port="
-            )
         lines = [
             'daemon_dir = "%s"' % backend.datadir,
             'auth = "%s:%s"' % (backend.rpc_user, backend.rpc_password),
             'daemon_rpc_addr = "%s:%d"' % (backend.host, backend.port),
-            'daemon_p2p_addr = "%s:%d"' % (backend.host, backend.p2p_port),
             'db_dir = "%s"' % os.path.join(self.datadir, "db"),
             'network = "%s"' % self.network,
             'electrum_rpc_addr = "%s:%d"' % (self.host, self.port),
             'monitoring_addr = "%s:%d"' % (self.host, self._monitoring_port),
             'log_filters = "INFO"',
+            # a fresh regtest chain reports IBD until its first block is mined
+            # and electrs does not answer the electrum rpc while it waits
+            "skip_block_download_wait = true",
         ]
+
+        # Electrs >= 0.12 fetches blocks over bitcoind's rest api.
+        # Older builds sync over p2p when offered
+        if backend.p2p_port is not None:
+            lines.append('daemon_p2p_addr = "%s:%d"' % (backend.host, backend.p2p_port))
         return "\n".join(lines) + "\n"
 
     def args(self) -> list:

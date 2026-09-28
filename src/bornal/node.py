@@ -1,7 +1,7 @@
 import os
 from abc import ABC, abstractmethod
 
-from .client import Client, ClientError
+from .client import Client
 from .daemon import get, Daemon
 from .logger import LOG
 
@@ -49,10 +49,6 @@ class Backend:
         return self
 
     def stop(self):
-        try:
-            self.client.call("stop")
-        except ClientError as exc:
-            self._log.warning(str(exc))
         self.daemon.stop()
         return self
 
@@ -100,6 +96,7 @@ class IntegrationTest(ABC):
         self._log = log or LOG
         self._declared = []
         self._backends: list[Backend] = []
+        self._localhost = "127.0.0.1"
 
     @property
     def log(self):
@@ -130,26 +127,48 @@ class IntegrationTest(ABC):
 
     def on_stop_test(self):
         """Run assertions before stopping ``self.backends`` (optional hook)"""
+        pass
 
     def _on_set_test_params(self):
         self.set_test_params()
         for index, (name, kwargs) in enumerate(self._declared):
-            datadir = os.path.join(self._data_dir, "%s%d" % (name, index))
-            node = make_backend(
-                name, self._binaries_dir, datadir, log=self._log, **kwargs
-            )
+            _datadir = os.path.join(self._data_dir, "%s%d" % (name, index))
+            if name == "electrs":
+                # test could use his own "bitcoin" impl backend to use with
+                # electrs. A smooth strategy to manage many backends is to use
+                # already declared bitcoin imple and shift its index on backends
+                # and `add_backend("electrs")` need a previous `add_backend("bitcoin-core")`
+                kwargs = dict(kwargs)
+                i = kwargs.pop("backend", -1)
+                bitcoin_impl = self.backends[i] if self.backends else None
+                if bitcoin_impl is None:
+                    raise ValueError("Bitcoin implementation cannot be None")
+                if bitcoin_impl.daemon.binary_name != "bitcoind":
+                    raise ValueError(
+                        f"Bornal do not support yet electrs+{bitcoin_impl.daemon.binary_name}"
+                    )
+                node = make_backend(
+                    "electrs", self._binaries_dir, _datadir, self._log, **kwargs
+                )
+                node.daemon.attach_bitcoind(bitcoin_impl.daemon)
+            else:
+                # any other installed plugin; an unknown name fails in the registry
+                node = make_backend(
+                    name, self._binaries_dir, _datadir, self._log, **kwargs
+                )
             self.backends.append(node)
 
     def _on_run_test(self):
-        """Start every backend, then ``run_test``; if one fails to start, stop the
-        ones already up and re-raise"""
+        """Start every backend then run `run_test`; if either raises, stop ones
+        already up and re-raise"""
         try:
+            # a bitcoin impl is up before the electrs on it
             for node in self.backends:
                 node.start()
+            self.run_test()
         except BaseException:
             self._on_stop_test()
             raise
-        self.run_test()
 
     def _on_stop_test(self):
         """``on_stop_test`` hook, then stop every backend (lifo) even if the hook

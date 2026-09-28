@@ -31,23 +31,24 @@ _create = _sub.add_parser(
     "create", help="scaffold an example integration test into the project"
 )
 _create.add_argument(
-    "feature",
+    "name",
     nargs="?",
     default=None,
-    metavar="FEATURE",
-    help="feature name -> tests/integration/test_<feature>.py (default: the daemon name)",
+    metavar="NAME",
+    help="test name -> tests/integration/test_<NAME>.py "
+    "(default: the template's daemon under test)",
 )
 _create.add_argument(
     "--template",
     default=DEFAULT_TEMPLATE,
     metavar="NAME",
-    help="which starter body to scaffold — one of: %s (default: %s)"
+    help="which starter test to scaffold — one of: %s (default: %s)"
     % (", ".join(sorted(TEMPLATES)), DEFAULT_TEMPLATE),
 )
 _create.add_argument(
     "--force",
     action="store_true",
-    help="overwrite an existing scaffolded test file",
+    help="overwrite the scaffolded files (the test and tests/integration/conftest.py)",
 )
 
 _create.add_argument(
@@ -65,7 +66,7 @@ def main():
     if args.command == "create":
         scaffold(
             paths,
-            feature=args.feature,
+            name=args.name,
             template=args.template,
             copyright_holders=args.copyright_holders,
             force=args.force,

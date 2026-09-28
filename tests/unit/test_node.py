@@ -79,7 +79,8 @@ def test_make_node_regtest(spy_popen, spy_rpc, tmp_path):
         assert node.client.get_block_count() == 0
     finally:
         node.stop()
-    assert "stop" in spy_rpc.calls
+    # no rpc stop: a backend is only terminated (SIGTERM is a clean shutdown)
+    assert "stop" not in spy_rpc.calls
     assert spy_popen.processes[0].terminated
 
 
@@ -92,7 +93,8 @@ def test_integration_success(spy_popen, spy_rpc, tmp_path):
             assert self.backends[0].client.get_block_count() == 0
 
     MockTest("/bin", str(tmp_path)).main()
-    assert "stop" in spy_rpc.calls
+    # no rpc stop: a backend is only terminated (SIGTERM is a clean shutdown)
+    assert "stop" not in spy_rpc.calls
     assert spy_popen.processes[0].terminated
 
 
@@ -156,7 +158,7 @@ def test_session(spy_popen, spy_rpc, tmp_path):
     test._on_stop_test()
     assert test.backends == []
     assert [p.terminated for p in spy_popen.processes] == [True, True]
-    assert spy_rpc.calls.count("stop") == 2
+    assert "stop" not in spy_rpc.calls
 
 
 def test_stop_on_errors(spy_popen, spy_rpc, tmp_path, monkeypatch):

@@ -10,6 +10,7 @@ __all__ = [
     "BASE_COINBASE_SUBSIDY",
     "assert_block_count",
     "assert_chain",
+    "assert_electrs_tip",
     "assert_finalized",
     "assert_mempool_accepts",
     "assert_mempool_rejects",
@@ -125,6 +126,26 @@ def assert_block_count(backend: Backend, count: int = 0):
             f"'{name}' at {host}:{port} expected {count} blocks, got {_count}"
         )
     LOG.debug(_count)
+
+
+def assert_electrs_tip(backend: Backend, height: int, timeout: int = 30):
+    die = time.monotonic() + timeout
+    tip = None
+    while time.monotonic() < die:
+        try:
+            tip = backend.client.get_tip()["height"]
+        except ClientError:
+            tip = None
+        if tip == height:
+            LOG.debug(tip)
+            return
+        time.sleep(0.25)
+    name = backend.daemon.binary_name
+    host = backend.daemon.host
+    port = backend.daemon.port
+    raise AssertionError(
+        f"'{name}' at {host}:{port} expected tip {height}, got {tip} after {timeout}s"
+    )
 
 
 def get_new_address(backend: Backend, label: str, address_type: str = "bech32"):
