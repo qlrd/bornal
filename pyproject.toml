@@ -110,11 +110,12 @@ ref = "test-cov"
 
 [tool.poe.tasks.example]
 help = "run example"
-cmd = "pytest --nproc ${nproc} --build-bitcoin ${bitcoin} ${debug:+--show-capture all --capture tee-sys} ${wallet:+--wallet} ${test:+examples/test_${test}.py}"
+cmd = "pytest --nproc ${nproc} --build-bitcoin ${bitcoin} ${electrs:+--build-electrs ${electrs}} ${debug:+--show-capture all --capture tee-sys} ${wallet:+--wallet} ${test:+examples/test_${test}.py}"
 args = [
     { name = "nproc", options = ["--nproc", "-j"], type = "integer", default = 8 },
     { name = "bitcoin", options = ["--bitcoin", "-B"], default = "latest"},
+    { name = "electrs", options = ["--electrs", "-E"], help = "also build electrs at this revision (e.g. latest): needed by examples/electrs"},
     { name = "wallet", options = ["--wallet", "-W"], type = "boolean", help = "have wallet support or not"},
     { name = "debug", options = ["--debug", "-d"], type = "boolean", help = "many verbose output"},
-    { name = "test", options = ["--test", "-t"], help = "example name"}
+    { name = "test", options = ["--test", "-t"], help = "example path under examples/ (e.g. test_chain_check.py or electrs)"}
 ]

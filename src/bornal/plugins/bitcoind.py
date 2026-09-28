@@ -285,6 +285,12 @@ class BitcoindClient(Client):
     def get_peer_info(self) -> list[dict]:
         return self.call("getpeerinfo")
 
+    def ping(self):
+        return self.call("ping")
+
+    def stop(self):
+        return self.call("stop")
+
 
 class BitcoindDaemon(Daemon):
     """Runs ``bitcoind`` with RPC enabled; the chain is set by ``network``
@@ -317,6 +323,8 @@ class BitcoindDaemon(Daemon):
             "-rpcpassword=%s" % self.rpc_password,
             "-fallbackfee=0.0002",
             "-server=1",
+            # electrs (>= 0.12) fetches blocks through it
+            "-rest=1",
         ]
         if self._p2p_port is None:
             argv.append("-listen=0")
