@@ -179,6 +179,14 @@ class BitcoindClient(Client):
     def get_balance(self):
         return self.call("getbalance")
 
+    def get_received_by_address(
+        self, address: str, minconf: int = 1, include_immature_coinbase: bool = False
+    ) -> float:
+        res = self.call(
+            "getreceivedbyaddress", address, minconf, include_immature_coinbase
+        )
+        return float(res)
+
     def list_unspent(self) -> list:
         return self.call("listunspent")
 
