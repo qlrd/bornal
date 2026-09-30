@@ -30,6 +30,7 @@ __all__ = [
 
 BASE_COINBASE_SUBSIDY = 50
 COINBASE_MATURITY = 100
+REJECT_SCRIPT = r"(mempool|mandatory)-script-verify-flag-failed"
 
 
 def wait_wallet_synced(backend: Backend, timeout: int = 30):
