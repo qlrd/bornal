@@ -8,6 +8,7 @@ import pytest
 from bornal.client import ClientError, ElectrumClient
 from bornal.plugins.electrs import ElectrsClient
 from bornal.plugins.bitcoind import BitcoindClient
+from bornal.plugins.floresta import FlorestaClient, FlorestaElectrumClient
 
 
 def test_fail_basic_noauth_header(mocked_client_noauth, mocked_rpc):
@@ -151,6 +152,7 @@ def test_electrum_client(spy_electrum):
 
 def test_electrum_servers_share_transport():
     assert issubclass(ElectrsClient, ElectrumClient)
+    assert issubclass(FlorestaElectrumClient, ElectrumClient)
 
 
 def test_payload_ids_increment(mocked_client, mocked_rpc, mocked_daemon):
@@ -166,6 +168,8 @@ def test_client_names():
     host = {"host": "127.0.0.1", "port": 1}
     assert BitcoindClient(**host).name == "bitcoin-core"
     assert ElectrsClient(**host).name == "electrs"
+    assert FlorestaClient(**host).name == "floresta"
+    assert FlorestaElectrumClient(**host).name == "floresta"
     with pytest.raises(TypeError, match="abstract method 'name'"):
         _ = ElectrumClient(**host).name
 
@@ -173,4 +177,5 @@ def test_client_names():
 def test_requires_auth():
     host = {"host": "127.0.0.1", "port": 1}
     assert BitcoindClient(**host).requires_auth
+    assert not FlorestaClient(**host).requires_auth
     assert not ElectrsClient(**host).requires_auth
