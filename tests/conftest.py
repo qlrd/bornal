@@ -34,9 +34,17 @@ _GIT_ENV = {
 
 
 class MockClient(Client):
+    _jsonrpc_version = "1.0"
+    _name = "mockd"
+
     @property
-    def jsonrpc_version(self):
-        return "1.0"
+    def jsonrpc_version(self) -> str:
+        return self._jsonrpc_version
+
+    @property
+    def name(self) -> str:
+        """It do not force any type of node, just warn on linters"""
+        return self._name
 
 
 class MockDaemon(Daemon):
@@ -474,6 +482,7 @@ class MockedSpyElectrumRpc:
     def __init__(self, responses=None):
         self.stored = {**self._RESPONSES, **(responses or {})}
         self.calls = []
+        self.payloads = []
         self.down = False
         self.raw_response = None
 
@@ -486,6 +495,7 @@ class MockedSpyElectrumRpc:
         payload = json.loads(data)
         method = payload["method"]
         self.calls.append(method)
+        self.payloads.append(payload)
         if self.raw_response is not None:
             return self.raw_response
         if method in self.stored:

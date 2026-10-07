@@ -39,9 +39,10 @@ def test_get_address_info(spy_popen, spy_rpc, tmp_path):
     )
 
     info = client.get_address_info(mine)
+    # uptime (on start), createwallet, getnewaddress, then this call
     assert payload(spy_rpc) == {
         "jsonrpc": "1.0",
-        "id": "bornal",
+        "id": 3,
         "method": "getaddressinfo",
         "params": [mine],
     }
