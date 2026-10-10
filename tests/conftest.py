@@ -16,7 +16,7 @@ from bornal.client import Client
 from bornal.daemon import Daemon
 from bornal.git import Git
 from bornal.paths import Paths
-from bornal.plugins import bitcoind, electrs
+from bornal.plugins import bitcoind, electrs, floresta
 from bornal.plugins.bitcoind import BitcoindDaemon
 from bornal.node import make_backend
 from bornal.testing import COINBASE_MATURITY, BASE_COINBASE_SUBSIDY
@@ -34,9 +34,17 @@ _GIT_ENV = {
 
 
 class MockClient(Client):
+    _jsonrpc_version = "1.0"
+    _name = "mockd"
+
     @property
-    def jsonrpc_version(self):
-        return "1.0"
+    def jsonrpc_version(self) -> str:
+        return self._jsonrpc_version
+
+    @property
+    def name(self) -> str:
+        """It do not force any type of node, just warn on linters"""
+        return self._name
 
 
 class MockDaemon(Daemon):
@@ -424,7 +432,8 @@ class MockedSpyBuild:
         elif argv[0] == "make":
             self._setup(os.path.join(cwd, "src"))
         elif argv[:2] == ["cargo", "build"]:
-            self._setup(os.path.join(cwd, "target", "release"), "electrs")
+            binary = argv[argv.index("--bin") + 1] if "--bin" in argv else "electrs"
+            self._setup(os.path.join(cwd, "target", "release"), binary)
 
     def clone(self, repo, dest, branch=None, depth=None):
         argv = ["git", "clone"]
@@ -474,6 +483,7 @@ class MockedSpyElectrumRpc:
     def __init__(self, responses=None):
         self.stored = {**self._RESPONSES, **(responses or {})}
         self.calls = []
+        self.payloads = []
         self.down = False
         self.raw_response = None
 
@@ -486,6 +496,7 @@ class MockedSpyElectrumRpc:
         payload = json.loads(data)
         method = payload["method"]
         self.calls.append(method)
+        self.payloads.append(payload)
         if self.raw_response is not None:
             return self.raw_response
         if method in self.stored:
@@ -573,6 +584,18 @@ def spy_build(monkeypatch):
     monkeypatch.setattr(electrs, "run", spy.run)
     monkeypatch.setattr(
         electrs.ElectrsCompiler, "get_latest_revision", lambda self: "0.10.10"
+    )
+    monkeypatch.setattr(
+        floresta.FlorestaCompiler, "check_compiler", lambda self, *a: None
+    )
+    monkeypatch.setattr(floresta.FlorestaCompiler, "on_path", lambda self: None)
+    monkeypatch.setattr(
+        floresta.FlorestaCompiler, "build_env", lambda self, rev, workdir: None
+    )
+    monkeypatch.setattr(floresta, "check_installed", lambda *a: None)
+    monkeypatch.setattr(floresta, "run", spy.run)
+    monkeypatch.setattr(
+        floresta.FlorestaCompiler, "get_latest_revision", lambda self: "0.9.1"
     )
     return spy
 
@@ -673,6 +696,41 @@ def electrs_daemon(tmp_path, backend_daemon):
 def electrs_client(spy_electrum):
     """An ``ElectrsClient`` over the mocked Electrum TCP transport"""
     return electrs.ElectrsClient(host="127.0.0.1", port=50001)
+
+
+@pytest.fixture
+def floresta_compiler():
+    """The floresta compiler plugin"""
+    return floresta.FlorestaCompiler()
+
+
+@pytest.fixture
+def floresta_daemon(tmp_path):
+    """A florestad daemon with fixed ports, not started"""
+    return floresta.FlorestaDaemon(
+        "/bin", str(tmp_path / "f"), port=18442, electrum_port=20001
+    )
+
+
+@pytest.fixture
+def spy_floresta_rpc(monkeypatch):
+    """Spy the RPC transport of a credential-less florestad"""
+    spy = MockedSpyRpc(
+        responses={
+            "uptime": 1,
+            "getblockchaininfo": {"chain": "regtest", "height": 0, "ibd": True},
+            "getbestblockhash": "00" * 32,
+            "getblockhash": "00" * 32,
+            "getblockheader": {"height": 0},
+            "getblock": {"height": 0},
+            "getroots": [],
+            "disconnectnode": None,
+            "ping": None,
+            "stop": "Floresta stopping",
+        }
+    )
+    monkeypatch.setattr("urllib.request.urlopen", spy)
+    return spy
 
 
 @pytest.fixture
@@ -797,3 +855,47 @@ def run(git_repo, tmp_path, monkeypatch):
         runpy.run_module("bornal", run_name="__main__")
 
     return _wrap
+
+
+@pytest.fixture
+def spy_floresta_electrum(monkeypatch):
+    """Spy florestad's Electrum TCP transport"""
+    spy = MockedSpyElectrumRpc(
+        responses={
+            "server.version": ["Floresta 0.9.1", "1.4"],
+            "server.banner": "Welcome to Floresta's Electrum Server.",
+            "server.features": {"server_version": "Floresta 0.9.1"},
+            "blockchain.relayfee": 0.00001,
+            "blockchain.block.headers": {"count": 1, "hex": "00" * 80, "max": 2016},
+            "blockchain.scripthash.get_balance": {"confirmed": 0, "unconfirmed": 0},
+            "blockchain.scripthash.get_history": [],
+            "blockchain.scripthash.listunspent": [],
+            "blockchain.transaction.get": "02" * 10,
+            "blockchain.transaction.broadcast": "11" * 32,
+        }
+    )
+    monkeypatch.setattr("socket.create_connection", spy)
+    return spy
+
+
+@pytest.fixture
+def boost_prefixes(tmp_path, monkeypatch):
+    """Fake Boost installs: ``make(root, "1.85")`` writes ``boost/version.hpp``;
+    ``brew`` is a fake Homebrew prefix and no system prefix is searched"""
+
+    def make(root, version):
+        major, minor = (int(p) for p in version.split("."))
+        include = root / "include" / "boost"
+        include.mkdir(parents=True)
+        (include / "version.hpp").write_text(
+            "#define BOOST_VERSION %d\n" % (major * 100000 + minor * 100)
+        )
+        return str(root)
+
+    brew = tmp_path / "brew"
+    (brew / "opt").mkdir(parents=True)
+    monkeypatch.delenv("BOOST_ROOT", raising=False)
+    monkeypatch.setattr(floresta, "_brew_prefix", lambda: str(brew))
+    monkeypatch.setattr(floresta, "SYSTEM_PREFIXES", [])
+    make.brew = brew
+    return make

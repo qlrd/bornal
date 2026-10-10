@@ -1,9 +1,7 @@
-import json
 import os
-import socket
 import tempfile
 
-from ..client import Client, ClientError
+from ..client import ElectrumClient
 from ..daemon import Compiler, CompilerError, Daemon, abort, free_port, run
 from ..deps import check_installed
 from ..git import Git
@@ -26,10 +24,21 @@ def _build_env():
 class ElectrsCompiler(Compiler):
     """Builds electrs with cargo. ``--nproc`` is ignored."""
 
-    name = _NAME
-    repo = _REPO
-    binary_name = _NAME
-    build_meta = _BUILD_META
+    @property
+    def binary_name(self):
+        return _NAME
+
+    @property
+    def build_meta(self):
+        return _BUILD_META
+
+    @property
+    def name(self):
+        return _NAME
+
+    @property
+    def repo(self):
+        return _REPO
 
     def ensure(self, paths, *args, force=False, revision=None, **kwargs) -> str:
         dest = self.dest(paths)
@@ -77,84 +86,30 @@ class ElectrsCompiler(Compiler):
         return dest
 
 
-class ElectrsClient(Client):
-    """Electrum-protocol JSON-RPC client, newline-delimited over TCP.
-
-    electrs ships no cli binary and no HTTP endpoint: it serves the Electrum
-    wire protocol on a raw TCP socket, one JSON-RPC message per line.
-    """
-
-    name = _NAME
+class ElectrsClient(ElectrumClient):
+    """Electrum client for electrs"""
 
     @property
-    def jsonrpc_version(self) -> str:
-        return "2.0"
+    def name(self):
+        return _NAME
 
-    @property
-    def url(self) -> str:
-        return "tcp://%s:%d" % (self._host, self._port)
-
-    def call(self, method, *params):
-        """Perform an Electrum JSON-RPC call over a fresh TCP connection."""
-        payload = {
-            "jsonrpc": self.jsonrpc_version,
-            "id": "bornal",
-            "method": method,
-            "params": list(params),
-        }
-        self._log.debug("$ rpc %s %s", method, list(params))
-        try:
-            with socket.create_connection(
-                (self._host, self._port), timeout=self.TIMEOUT
-            ) as sock:
-                sock.sendall(json.dumps(payload).encode() + b"\n")
-                with sock.makefile("rb") as reader:
-                    raw = reader.readline()
-        except OSError as exc:
-            raise ClientError("rpc %s unreachable: %s" % (method, exc)) from exc
-
-        if not raw:
-            raise ClientError("rpc %s: connection closed" % method)
-        try:
-            body = json.loads(raw)
-        except ValueError as exc:
-            raise ClientError("rpc %s: invalid response" % method) from exc
-
-        if body.get("error"):
-            raise ClientError("rpc %s error: %s" % (method, body["error"]))
-        return body.get("result")
-
-    def is_up(self) -> bool:
-        """Whether the electrum server answers a trivial call."""
-        try:
-            self.call("server.ping")
-            return True
-        except ClientError:
-            return False
-
-    def server_version(self, client="bornal", protocol="1.4") -> list:
-        return self.call("server.version", client, protocol)
-
-    def banner(self) -> str:
-        return self.call("server.banner")
-
-    def get_tip(self) -> dict:
-        """Current chain tip as ``{"height": int, "hex": str}``"""
-        return self.call("blockchain.headers.subscribe")
-
-    def block_header(self, height) -> str:
-        return self.call("blockchain.block.header", height)
-
-    def estimate_fee(self, blocks=1):
-        return self.call("blockchain.estimatefee", blocks)
+    def server_version(self, protocol="1.4"):
+        return self.call("server.version", "electrs", protocol)
 
 
 class ElectrsDaemon(Daemon):
-    """Runs ``electrs`` on top of a running bitcoind, serving the Electrum
-    protocol; configured through a generated ``electrs.toml``"""
+    """Runs ``electrs`` on top of a running bitcoind (other implementations are
+    not supported yet; florestad ships its own Electrum server, see
+    ``bornal.plugins.floresta``), configured through a generated
+    ``electrs.toml``."""
 
-    name = _NAME
-    client_class = ElectrsClient
+    @property
+    def name(self):
+        return _NAME
+
+    @property
+    def client_class(self):
+        return ElectrsClient
 
     def __init__(self, *args, bitcoind=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -220,4 +175,4 @@ class ElectrsDaemon(Daemon):
         return super().start()
 
 
-ElectrsCompiler.daemon_class = ElectrsDaemon
+setattr(ElectrsCompiler, "daemon_class", ElectrsDaemon)

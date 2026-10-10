@@ -5,7 +5,10 @@ import urllib.error
 
 import pytest
 
-from bornal.client import ClientError
+from bornal.client import ClientError, ElectrumClient
+from bornal.plugins.electrs import ElectrsClient
+from bornal.plugins.bitcoind import BitcoindClient
+from bornal.plugins.floresta import FlorestaClient, FlorestaElectrumClient
 
 
 def test_fail_basic_noauth_header(mocked_client_noauth, mocked_rpc):
@@ -23,7 +26,7 @@ def test_basic_auth_header(mocked_client, mocked_rpc):
     assert auth == "Basic %s" % base64.b64encode(b"mocku:liar").decode()
     assert json.loads(req.data) == {
         "jsonrpc": "1.0",
-        "id": "bornal",
+        "id": 0,
         "method": "getblockchaininfo",
         "params": [],
     }
@@ -39,7 +42,7 @@ def test_not_implemented(mocked_client, mocked_rpc):
     assert req.full_url == "http://127.0.0.1:5555"
     assert json.loads(req.data) == {
         "jsonrpc": "1.0",
-        "id": "bornal",
+        "id": 0,
         "method": "h",
         "params": [],
     }
@@ -54,7 +57,7 @@ def test_payload(mocked_client, mocked_rpc):
     assert req.full_url == "http://127.0.0.1:5555"
     assert json.loads(req.data) == {
         "jsonrpc": "1.0",
-        "id": "bornal",
+        "id": 0,
         "method": "getblockcount",
         "params": [],
     }
@@ -69,7 +72,7 @@ def test_generatetoaddress(mocked_client, mocked_rpc):
     assert req.full_url == "http://127.0.0.1:5555"
     assert json.loads(req.data) == {
         "jsonrpc": "1.0",
-        "id": "bornal",
+        "id": 0,
         "method": "generatetoaddress",
         "params": [101, "bcrt1qaddr"],
     }
@@ -140,3 +143,39 @@ def test_timeout(mocked_client, monkeypatch):
     monkeypatch.setattr("urllib.request.urlopen", handle)
     with pytest.raises(ClientError, match="not up"):
         mocked_client.wait_until_up(timeout=0)
+
+
+def test_electrum_client(spy_electrum):
+    with pytest.raises(TypeError, match="abstract method 'name'"):
+        _ = ElectrumClient(host="127.0.0.1", port=50001)
+
+
+def test_electrum_servers_share_transport():
+    assert issubclass(ElectrsClient, ElectrumClient)
+    assert issubclass(FlorestaElectrumClient, ElectrumClient)
+
+
+def test_payload_ids_increment(mocked_client, mocked_rpc, mocked_daemon):
+    mocked_client.call("getblockcount")
+    mocked_client.call("getblockcount")
+    assert [json.loads(r.data)["id"] for r in mocked_rpc.requests] == [0, 1]
+    # each client counts on its own
+    mocked_daemon.make_client().call("getblockcount")
+    assert json.loads(mocked_rpc.req.data)["id"] == 0
+
+
+def test_client_names():
+    host = {"host": "127.0.0.1", "port": 1}
+    assert BitcoindClient(**host).name == "bitcoin-core"
+    assert ElectrsClient(**host).name == "electrs"
+    assert FlorestaClient(**host).name == "floresta"
+    assert FlorestaElectrumClient(**host).name == "floresta"
+    with pytest.raises(TypeError, match="abstract method 'name'"):
+        _ = ElectrumClient(**host).name
+
+
+def test_requires_auth():
+    host = {"host": "127.0.0.1", "port": 1}
+    assert BitcoindClient(**host).requires_auth
+    assert not FlorestaClient(**host).requires_auth
+    assert not ElectrsClient(**host).requires_auth
