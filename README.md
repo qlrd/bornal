@@ -10,9 +10,9 @@ compilation built for the test's purpose**).
 
 - `bitcoind`
 - `electrs`
+- `florestad` and `floresta-electrum`
 - `btcd` (TODO)
 - `utreexod` (TODO)
-- `florestad` (TODO)
 - `lianad` (TODO)
 
 and hands your tests a ready JSON-RPC client — so you write your integration
@@ -22,6 +22,9 @@ tests, hacking through your preferred bitcoin lib, not plumbing through it.
 > This is intended basically for a "krux-ecosystem" integration tests setup
 ([krux](https://github.com/selfcustody/krux), [kern](https://github.com/odudex/Kern),
 or any related project) without bloating up those repos.
+>
+> By krux-ecosystem it means the companion(s) apps used with krux, by community
+> of users or developer team. 
 
 ## Getting Started
 
@@ -46,8 +49,8 @@ uv run bornal create <feature> --template <template>
 
 **Run tests**
 
-This is the fun part: you skip the main coding setup and just let `pytest` know
-it through their plugin system:
+You skip the main coding setup and just let `pytest` know it through their
+plugin system. Your tests should be expressive:
 
 ```bash
 INTEGRATION_TEMP_DIR=<.cache> uv run pytest tests/integration/test_<feature>.py
@@ -89,7 +92,7 @@ the next time you will not need to use `--build-*`.
 
 This is for writing tests for your project.
 
-First create a `<mytestpath>/conftest.py` as in any `pytest` setup:
+First create a `<mytestpath>/conftest.py` or in the test itself:
 
 ```python
 import pytest
@@ -126,8 +129,8 @@ def bob(integration_test):
     return integration_test.backends[1]
 ```
 
-`test_factory` is a pre-defined fixture. The default one will fail if it isn't
-overridden.
+`test_factory` is a pre-defined fixture. Your custom setup. The default one
+will fail if it isn't overridden. It
 
 `integration_test` fixture is a customizable instance of the predefined factory
 class defined in `test_factory` fixture.
@@ -146,18 +149,22 @@ from bornal.testing import (
     sync_blocks
 )
 
+# Nodes starts, but not connected
 def test_000(alice, bob):
     assert_block_count(alice, 0)
     assert_block_count(bob, 0)
 
+# Nodes will not stop if test pass
 def test_001(alice,bob):
-    connect_p2p(alice,bob) # Connect P2P already syncs blocks
+    connect_p2p(alice,bob)
     assert_block_count(bob, 0)
 
+# Same
 def test_002(alice,bob):
     generate_to_address(alice, UNSPENDABLE_ADDRESS, block_amount=1)
     assert_block_count(bob, 0)
 
+# Now will stop on failure (with report) or gracefully shutdown
 def test_003(alice,bob):
     sync_blocks(alice, bob)
     assert_block_count(bob, 1)
@@ -223,23 +230,6 @@ uv run poe lint
 
 If you add some plugin, is really important to add some **examples** on `examples/`.
 They're real-bitcoind integration tests demos.
-
-# Motivation
-
-A previously contribution to the [getfloresta/Floresta](https://github.com/getfloresta/Floresta)
-test framework taught on how to follow some already coded principles of Bitcoin-Core
-test framework and thus I helped to improve it to support both `bitcoind`, `utreexod`,
-`florestad`.
-
-While it almost-work (in the sense with random failures in CI), this was fixed by
-[@joaozinhom](https://github.com/joaozinhom) using `pytest`. The idea is that
-`pytest` already deals with threading and plumbing could be made by fixtures.
-
-Afterwards, I learned about the test framework made by [wizardsardine/liana](https://github.com/wizardsardine/liana)
-that was made before and is pretty similar, with some nice features.
-
-This WIP is a glue of their work as `pytest` registered plugin plus a
-scaffolding and self-tests for custom daemons.
 
 ## Contributing
 
