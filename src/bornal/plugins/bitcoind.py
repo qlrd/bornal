@@ -293,6 +293,49 @@ class BitcoindClient(Client):
     def stop(self):
         return self.call("stop")
 
+    def send_to_address(
+        self,
+        address: str,
+        amount: int | float,
+        comment: str | None = None,
+        comment_to: str | None = None,
+        subtractfeefromamount: bool | None = None,
+        replaceable: bool | None = None,
+        conf_target: int | None = None,
+        estimate_mode: str | None = None,
+        avoid_reuse: bool | None = None,
+        fee_rate: int | float | None = None,
+        verbose: bool | None = None,
+    ):
+        # conf_target (and estimate_mode) are inputs to fee estimator and
+        # fee_rate skips estimator. They are mutually exclusive.
+        if fee_rate is not None:
+            if conf_target is not None:
+                raise ValueError("Use either 'conf_target' or 'fee_rate', not both")
+            if estimate_mode not in (None, "unset"):
+                raise ValueError("Use either 'estimate_mode' or 'fee_rate', not both")
+
+        params = [
+            address,
+            amount,
+            comment,
+            comment_to,
+            subtractfeefromamount,
+            replaceable,
+            conf_target,
+            estimate_mode,
+            avoid_reuse,
+            fee_rate,
+            verbose,
+        ]
+        # Core only added verbose in v23, fee_rate in v0.21 and avoid_reuse in
+        # v0.19, and it rejects a call with more arguments than it knows: drop
+        # the trailing unset ones so older builds still accept the call. Core
+        # reads a null in the middle as unset, so it falls back to its defaults
+        while params[-1] is None:
+            params.pop()
+        return self.call("sendtoaddress", *params)
+
 
 class BitcoindDaemon(Daemon):
     """Runs ``bitcoind`` with RPC enabled; the chain is set by ``network``
