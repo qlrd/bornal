@@ -12,6 +12,17 @@ def payload(spy_rpc):
     return json.loads(spy_rpc.req.data)
 
 
+def test_get_network_info(spy_popen, spy_rpc, tmp_path):
+    client = make_backend("bitcoin-core", "/bin", str(tmp_path)).start().client
+    info = {"version": 290200, "protocolversion": 70016, "connections": 0}
+    spy_rpc.stored["getnetworkinfo"] = info
+
+    assert client.get_network_info() == info
+    request = payload(spy_rpc)
+    assert request["method"] == "getnetworkinfo"
+    assert request["params"] == []
+
+
 def test_get_connection_count(spy_popen, spy_rpc, tmp_path):
     client = make_backend("bitcoin-core", "/bin", str(tmp_path)).start().client
     assert client.get_connection_count() == 0
