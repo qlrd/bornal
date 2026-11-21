@@ -77,14 +77,22 @@ def test_000_index(alice, bob):
     assert_chain(bob, "regtest")
 
 
-def test_001_create_wallets(alice, bob):
+def test_001_get_network_info(alice, bob):
+    """Read both nodes' software and protocol versions with Bornal."""
+    for node in (alice, bob):
+        info = node.client.get_network_info()
+        assert isinstance(info["version"], int) and info["version"] > 0
+        assert isinstance(info["protocolversion"], int) and info["protocolversion"] > 0
+
+
+def test_002_create_wallets(alice, bob):
     create_wallet(alice, "alice-wallet")
     create_wallet(bob, "bob-wallet")
     assert_wallet_info(alice, "alice-wallet")
     assert_wallet_info(bob, "bob-wallet")
 
 
-def test_002_fund_alice(alice, bob, state):
+def test_003_fund_alice(alice, bob, state):
     assert_block_count(alice, 0)
     assert_block_count(bob, 0)
     address = get_new_address(alice, "test_sendtoaddress::alice")
@@ -98,7 +106,7 @@ def test_002_fund_alice(alice, bob, state):
     state["alice_balance"] = balance
 
 
-def test_003_send_to_bob(alice, bob, state):
+def test_004_send_to_bob(alice, bob, state):
     address = get_new_address(bob, "test_sendtoaddress::bob")
     txid = alice.client.send_to_address(address, AMOUNT)
     mempool = alice.client.get_raw_mempool()
@@ -107,7 +115,7 @@ def test_003_send_to_bob(alice, bob, state):
     state["txid"] = txid
 
 
-def test_004_sync_with_bob(alice, bob):
+def test_005_sync_with_bob(alice, bob):
     generate_to_address(alice, UNSPENDABLE_ADDRESS, 1)
     sync_blocks(alice, bob)
     assert_block_count(bob, COINBASE_MATURITY + 2)
@@ -115,7 +123,7 @@ def test_004_sync_with_bob(alice, bob):
     wait_wallet_synced(bob)
 
 
-def test_005_fund_bob(alice, bob, state):
+def test_006_fund_bob(alice, bob, state):
     tx = alice.client.get_transaction(state["txid"])
     assert tx["confirmations"] == 1, f"Expected 1 confirmation, got {tx}"
 
