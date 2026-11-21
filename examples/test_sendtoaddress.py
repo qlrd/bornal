@@ -77,6 +77,14 @@ def test_000_index(alice, bob):
     assert_chain(bob, "regtest")
 
 
+def test_get_network_info(alice, bob):
+    """Read both nodes' software and protocol versions with Bornal."""
+    for node in (alice, bob):
+        info = node.client.get_network_info()
+        assert isinstance(info["version"], int) and info["version"] > 0
+        assert isinstance(info["protocolversion"], int) and info["protocolversion"] > 0
+
+
 def test_001_create_wallets(alice, bob):
     create_wallet(alice, "alice-wallet")
     create_wallet(bob, "bob-wallet")
