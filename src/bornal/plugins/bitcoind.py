@@ -160,6 +160,10 @@ class BitcoindClient(Client):
     def get_blockchain_info(self):
         return self.call("getblockchaininfo")
 
+    def get_network_info(self):
+        """Returns an object containing various state info regarding P2P networking."""
+        return self.call("getnetworkinfo")
+
     def get_block_count(self):
         return self.call("getblockcount")
 
